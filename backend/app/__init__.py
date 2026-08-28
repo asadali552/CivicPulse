@@ -1,0 +1,1 @@
+"""CivicPulse AI backend package."""
