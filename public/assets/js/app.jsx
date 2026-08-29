@@ -106,6 +106,7 @@
 
     function LocationPicker({ latitude, longitude, onPick }) {
       const mapNode = useRef(null);
+      const pickerNode = useRef(null);
       const onPickRef = useRef(onPick);
       useEffect(() => { onPickRef.current = onPick; }, [onPick]);
       useEffect(() => {
@@ -116,17 +117,23 @@
         window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
         }).addTo(map);
-        const marker = window.L.marker(center, { draggable: true }).addTo(map);
-        const select = ({ lat, lng }) => {
-          marker.setLatLng([lat, lng]);
+        const selectCenter = () => {
+          const { lat, lng } = map.getCenter();
+          pickerNode.current?.classList.remove('is-moving');
           onPickRef.current(lat, lng);
         };
-        map.on('click', event => select(event.latlng));
-        marker.on('dragend', () => select(marker.getLatLng()));
+        map.on('movestart', () => pickerNode.current?.classList.add('is-moving'));
+        map.on('moveend', selectCenter);
+        map.on('click', event => map.panTo(event.latlng));
         setTimeout(() => map.invalidateSize(), 0);
         return () => map.remove();
       }, []);
-      return <div ref={mapNode} className="h-72 w-full rounded-xl overflow-hidden bg-slate-950 border border-slate-800" aria-label="Choose report location on map" />;
+      return <div ref={pickerNode} className="location-picker relative h-72 w-full rounded-xl overflow-hidden bg-slate-950 border border-slate-800">
+        <div ref={mapNode} className="h-full w-full" aria-label="Move the map to place its center on the report location" />
+        <div className="location-picker-pin" aria-hidden="true">
+          <Icon name="map-pin" className="w-9 h-9" />
+        </div>
+      </div>;
     }
 
     // --- ICON HELPER COMPONENT FOR LUCIDE CDN ---
@@ -975,7 +982,7 @@
                           </div>
                           {reportForm.locationSource && <div className="mt-2 text-[10px] font-mono text-emerald-400">Confirmed source: {reportForm.locationSource.replace('_', ' ')}{reportForm.locationAccuracy ? ` · ±${Math.round(reportForm.locationAccuracy)}m` : ''}</div>}
                           <button type="button" onClick={()=>setShowLocationMap(value=>!value)} className="mt-3 text-xs text-sky-400 underline underline-offset-4">{showLocationMap ? 'Hide map' : 'Choose exact point on map'}</button>
-                          {showLocationMap && <div className="mt-3"><LocationPicker latitude={reportForm.latitude} longitude={reportForm.longitude} onPick={selectMapLocation}/><p className="text-[10px] text-slate-500 mt-2">Click the map or drag the marker, then confirm the readable address above.</p></div>}
+                          {showLocationMap && <div className="mt-3"><LocationPicker latitude={reportForm.latitude} longitude={reportForm.longitude} onPick={selectMapLocation}/><p className="text-[10px] text-slate-500 mt-2">Move the map beneath the fixed center pin. The location updates when you stop moving.</p></div>}
                         </div>
 
                         <div>

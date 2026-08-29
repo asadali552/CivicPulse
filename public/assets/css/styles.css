@@ -22,6 +22,17 @@
     .soft-pulse { animation: soft-pulse 2.4s ease-in-out infinite; }
     .interactive-card { transition: transform .25s ease, border-color .25s ease, background-color .25s ease; }
     .interactive-card:hover { transform: translateY(-3px); border-color: rgba(56,189,248,.35); }
+    .location-picker-pin {
+      position: absolute; left: 50%; top: 50%; z-index: 500;
+      color: #38bdf8; pointer-events: none;
+      transform: translate(-50%, -100%);
+      filter: drop-shadow(0 4px 5px rgba(2, 6, 23, .75));
+      transition: transform .16s ease, filter .16s ease;
+    }
+    .location-picker.is-moving .location-picker-pin {
+      transform: translate(-50%, calc(-100% - 6px));
+      filter: drop-shadow(0 9px 7px rgba(2, 6, 23, .6));
+    }
     @keyframes reveal-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes soft-pulse { 0%,100% { opacity: .45; transform: scale(.92); } 50% { opacity: 1; transform: scale(1); } }
     @media (prefers-reduced-motion: reduce) {
@@ -73,4 +84,3 @@
       .leaflet-control-attribution { font-size: 8px !important; }
       .interactive-card:hover { transform: none; }
     }
-

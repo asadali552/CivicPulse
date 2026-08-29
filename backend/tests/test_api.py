@@ -320,13 +320,20 @@ def test_status_machine_and_idempotent_report_creation(monkeypatch):
         second = client.post("/api/complaints", headers={"Idempotency-Key": "report-123"}, json=payload)
         assert first.json()["complaint_id"] == second.json()["complaint_id"]
         assert len(civic_repo.memory["complaints"]) == 1
+        # Manual complaint cleanup must not leave an orphaned idempotency key
+        # that prevents the citizen from submitting again.
+        civic_repo.memory["complaints"].clear()
+        third = client.post("/api/complaints", headers={"Idempotency-Key": "report-123"}, json=payload)
+        assert third.status_code == 200
+        assert third.json()["complaint_id"] != first.json()["complaint_id"]
+        assert len(civic_repo.memory["complaints"]) == 1
         admin_headers = admin_login(client)
-        invalid = client.patch(f"/api/complaints/{first.json()['complaint_id']}/status", headers=admin_headers, json={"status": "Resolved"})
+        invalid = client.patch(f"/api/complaints/{third.json()['complaint_id']}/status", headers=admin_headers, json={"status": "Resolved"})
         assert invalid.status_code == 409
-        assigned = client.patch(f"/api/complaints/{first.json()['complaint_id']}/status", headers=admin_headers, json={"status": "Assigned", "note": "Roads team accepted ownership"})
+        assigned = client.patch(f"/api/complaints/{third.json()['complaint_id']}/status", headers=admin_headers, json={"status": "Assigned", "note": "Roads team accepted ownership"})
         assert assigned.status_code == 200
-        assert assigned.json()["sla_started_at"] == first.json()["sla_started_at"]
-        audit = client.get(f"/api/operations/audit/complaint/{first.json()['complaint_id']}")
+        assert assigned.json()["sla_started_at"] == third.json()["sla_started_at"]
+        audit = client.get(f"/api/operations/audit/complaint/{third.json()['complaint_id']}")
         assert audit.status_code == 200
         assert audit.json()["events"][0]["action"] == "status_transition"
 

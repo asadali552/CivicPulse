@@ -293,7 +293,13 @@ async def _idempotent_create(payload: ComplaintCreate, idempotency_key: str | No
             complaint = await civic_repo.find_one("complaints", "complaint_id", existing.get("complaint_id")) if existing.get("complaint_id") else None
             if complaint:
                 return complaint
-            raise HTTPException(status_code=409, detail="A request with this idempotency key is already processing")
+            if existing.get("state") == "completed" and existing.get("complaint_id"):
+                # The complaint may have been removed manually while its
+                # idempotency record remained. Remove that orphan so a fresh
+                # submission is not permanently blocked.
+                await civic_repo.delete_one("idempotency_keys", "key", idempotency_key)
+            else:
+                raise HTTPException(status_code=409, detail="A request with this idempotency key is already processing")
         try:
             await civic_repo.insert_one("idempotency_keys", {"key": idempotency_key, "complaint_id": None, "state": "processing", "created_at": now_utc(), "expires_at": now_utc() + timedelta(hours=24)})
         except Exception as exc:
