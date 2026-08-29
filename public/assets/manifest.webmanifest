@@ -1,1 +1,1 @@
-{"name":"CivicPulse AI","short_name":"CivicPulse","start_url":"/","display":"standalone","background_color":"#0B0F17","theme_color":"#0B0F17","icons":[{"src":"/assets/favicon.svg","sizes":"any","type":"image/svg+xml"}]}
+{"name":"CivicPulse AI","short_name":"CivicPulse","start_url":"/","display":"standalone","background_color":"#0B0F17","theme_color":"#0B0F17","icons":[{"src":"favicon.svg?v=3","sizes":"any","type":"image/svg+xml"}]}

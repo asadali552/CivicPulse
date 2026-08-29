@@ -62,7 +62,7 @@ def build_dashboard_stats(complaints: list[dict], offers: list[dict]) -> dict:
             "median_backlog_age_hours": round(median(backlog_age_hours), 2) if backlog_age_hours else None,
             "severity_adjusted_resolution_percent": round(resolved_weight / max(total_weight, 1) * 100, 1),
             "department_workload": dict(department_workload),
-            "citizen_confirmation_rate_percent": round(sum(1 for item in resolved if item.get("resolution_approvals", {}).get("reporter")) / max(len(resolved), 1) * 100, 1),
+            "citizen_confirmation_rate_percent": round(sum(1 for item in resolved if item.get("citizen_verification", {}).get("fixed")) / max(len(resolved), 1) * 100, 1),
         },
         "methodology": "Medians reduce outlier distortion. SLA compliance uses only cases with due and resolution timestamps. Severity-adjusted performance weights Critical=4, High=3, Medium=2, Low=1. Rates are not rankings and should be interpreted with workload and backlog.",
     }

@@ -442,15 +442,15 @@ def test_community_repair_escrow_requires_proof(monkeypatch):
         released = client.post(f"/api/repair-requests/{request_id}/release-funds", headers=admin_headers)
         assert released.status_code == 200
         assert released.json()["funds_status"] == "Payment Approved (Demo)"
-        assert civic_repo.memory["complaints"][0]["status"] == "Evidence Uploaded"
+        assert civic_repo.memory["complaints"][0]["status"] == "Resolved"
         approvals = civic_repo.memory["complaints"][0]["resolution_approvals"]
-        assert approvals == {"contractor": True, "reporter": False, "government": True}
+        assert approvals == {"contractor": True, "government": True}
 
         reporter_approval = client.post("/api/complaints/CP-ROAD1/resolution-approval", headers=admin_headers, json={
             "stakeholder": "reporter", "approved": True,
         })
         assert reporter_approval.status_code == 403
-        assert civic_repo.memory["complaints"][0]["fully_verified"] is False
+        assert civic_repo.memory["complaints"][0]["fully_verified"] is True
 
 
 def test_private_reporter_verification_resolves_and_receipt_is_public(monkeypatch):
@@ -468,7 +468,7 @@ def test_private_reporter_verification_resolves_and_receipt_is_public(monkeypatc
         token = created.json()["reporter_verification_token"]
         complaint = civic_repo.memory["complaints"][0]
         complaint["resolution_evidence"] = {"after_image_url": "/uploads/fixed.jpg"}
-        complaint["resolution_approvals"] = {"contractor": True, "reporter": False, "government": True}
+        complaint["resolution_approvals"] = {"contractor": True, "government": True}
         verified = client.post(f"/api/complaints/{complaint['complaint_id']}/reporter-verification", json={"token": token, "outcome": "fixed"})
         assert verified.status_code == 200
         assert verified.json()["status"] == "Resolved"

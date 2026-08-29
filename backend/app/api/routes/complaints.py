@@ -262,7 +262,7 @@ async def _create_complaint(payload: ComplaintCreate, analysis_override: dict | 
         "final_decision": None,
         "resolution_evidence": None,
         "citizen_verification": None,
-        "resolution_approvals": {"contractor": False, "reporter": False, "government": False},
+        "resolution_approvals": {"contractor": False, "government": False},
         "status_history": [
             {"status": "Reported", "note": "Citizen report received.", "at": timestamp},
             {"status": "AI Classified", "note": analysis["reasoning"], "at": timestamp},
@@ -527,7 +527,7 @@ async def attach_resolution_evidence(complaint_id: str, payload: ResolutionEvide
     if complaint.get("status") == "In Progress":
         history.append({"status": "Resolution Submitted", "note": "Field team submitted work for verification.", "at": now_utc(), "actor_id": _admin["user_id"], "actor_role": _admin["role"]})
     history.append({"status": "Evidence Uploaded", "note": payload.completion_note, "at": now_utc(), "uploaded_by": payload.uploaded_by, "actor_id": _admin["user_id"], "actor_role": _admin["role"]})
-    approvals = complaint.get("resolution_approvals") or {"contractor": False, "reporter": False, "government": False}
+    approvals = complaint.get("resolution_approvals") or {"contractor": False, "government": False}
     approvals["contractor"] = True
     updated = await civic_repo.update_one(
         "complaints",
@@ -560,11 +560,9 @@ async def resolution_approval(complaint_id: str, payload: ResolutionApprovalCrea
         raise HTTPException(status_code=403, detail="Reporter approval must come from the private reporter verification flow")
     if payload.approved and not complaint.get("resolution_evidence"):
         raise HTTPException(status_code=400, detail="Resolution evidence is required before approval")
-    approvals = complaint.get("resolution_approvals") or {
-        "contractor": False, "reporter": False, "government": False,
-    }
+    approvals = complaint.get("resolution_approvals") or {"contractor": False, "government": False}
     approvals[payload.stakeholder] = payload.approved
-    all_approved = all(approvals.values())
+    all_approved = all(approvals.get(key) for key in ("contractor", "government"))
     history = complaint.get("status_history", [])
     history.append({
         "status": "Resolution Approved" if payload.approved else "Resolution Approval Withdrawn",
@@ -614,10 +612,10 @@ async def reporter_verification(complaint_id: str, payload: ReporterVerification
         raise HTTPException(status_code=409, detail="Completion evidence must be submitted before reporter verification")
 
     timestamp = now_utc()
-    approvals = dict(complaint.get("resolution_approvals") or {"contractor": False, "reporter": False, "government": False})
+    approvals = dict(complaint.get("resolution_approvals") or {"contractor": False, "government": False})
     positive = payload.outcome == "fixed"
     approvals["reporter"] = positive
-    all_approved = all(approvals.get(key) for key in ("contractor", "reporter", "government"))
+    all_approved = all(approvals.get(key) for key in ("contractor", "government"))
     if payload.outcome in {"partially_fixed", "not_fixed"}:
         status = "Reopened - Needs Review"
         needs_review = True

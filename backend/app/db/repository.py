@@ -216,7 +216,7 @@ class CivicRepository:
                 "priority_breakdown": {"severity": 30, "citizen_signal": 12, "waiting_time": 5, "location_impact": 20},
                 "duplicate_count": 4,
                 "status": "Resolved",
-                "resolution_approvals": {"contractor": True, "reporter": True, "government": True},
+                "resolution_approvals": {"contractor": True, "government": True},
                 "fully_verified": True,
                 "channel": "Portal",
                 "created_at": now_utc(),

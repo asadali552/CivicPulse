@@ -161,7 +161,7 @@ select:focus-visible {
   left: 50%;
   top: 50%;
   z-index: 500;
-  color: #38bdf8;
+  color: #ef4444;
   pointer-events: none;
   transform: translate(-50%, -100%);
   filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.8));
@@ -311,7 +311,8 @@ select:focus-visible {
 
 /* High-Contrast Executive Light Mode Theme Overrides */
 html:not(.dark) {
-  --bg-primary: #F8FAFC;
+  color-scheme: light;
+  --bg-primary: #F5F5F7;
   --bg-secondary: #FFFFFF;
   --bg-card: #FFFFFF;
   --border-subtle: #E2E8F0;
@@ -322,13 +323,14 @@ html:not(.dark) {
 }
 
 html:not(.dark) body {
-  background-color: #F8FAFC !important;
+  background-color: #F5F5F7 !important;
   color: #0F172A !important;
 }
 
 html:not(.dark) [class*="bg-[#0B0F17]"],
+html:not(.dark) [class*="bg-[#070A11]"],
 html:not(.dark) [class*="bg-civic-obsidian"] {
-  background-color: #F8FAFC !important;
+  background-color: #F5F5F7 !important;
   color: #0F172A;
 }
 
@@ -357,15 +359,15 @@ html:not(.dark) [class*="border-civic-border"] {
 }
 
 html:not(.dark) .glass-panel {
-  background: rgba(255, 255, 255, 0.88) !important;
-  border-color: #E2E8F0 !important;
-  box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.08) !important;
+  background: #FFFFFF !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 30px rgba(15, 23, 42, 0.05) !important;
 }
 
 html:not(.dark) .glass-card {
-  background: rgba(255, 255, 255, 0.95) !important;
-  border-color: #E2E8F0 !important;
-  box-shadow: 0 8px 24px -6px rgba(15, 23, 42, 0.06) !important;
+  background: #FFFFFF !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03), 0 8px 20px rgba(15, 23, 42, 0.04) !important;
 }
 
 html:not(.dark) .glass-input {
@@ -396,9 +398,26 @@ html:not(.dark) select {
 }
 
 html:not(.dark) header {
-  background: rgba(248, 250, 252, 0.92) !important;
-  border-bottom-color: #E2E8F0 !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-bottom-color: rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03) !important;
 }
+
+html:not(.dark) .surface-grid {
+  background-image: linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
+}
+
+html:not(.dark) .aurora-glow {
+  background: radial-gradient(600px circle at 50% -10%, rgba(14, 165, 233, 0.10), transparent 72%);
+}
+
+html:not(.dark) footer {
+  background: #FFFFFF !important;
+  border-top-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+html:not(.dark) ::-webkit-scrollbar-track { background: #F5F5F7; }
+html:not(.dark) ::-webkit-scrollbar-thumb { background: #C7C7CC; }
 
 html:not(.dark) .leaflet-popup-content-wrapper,
 html:not(.dark) .leaflet-popup-tip {

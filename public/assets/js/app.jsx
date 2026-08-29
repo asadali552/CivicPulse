@@ -64,9 +64,9 @@
 
     const markerState = (report) => {
       const approvals = report.resolution_approvals || {};
-      const approvalCount = ['contractor', 'reporter', 'government'].filter(key => approvals[key]).length;
-      if (approvalCount === 3 || report.fully_verified) return { color: '#22c55e', label: 'Fully verified resolution' };
-      if (approvalCount > 0) return { color: '#38bdf8', label: `${approvalCount}/3 resolution approvals` };
+      const approvalCount = ['contractor', 'government'].filter(key => approvals[key]).length;
+      if (approvalCount === 2 || report.fully_verified) return { color: '#22c55e', label: 'Verified resolution' };
+      if (approvalCount > 0) return { color: '#38bdf8', label: `${approvalCount}/2 resolution approvals` };
       if (report.severity === 'Critical' || report.severity === 'High') return { color: '#ef4444', label: `${report.severity} unresolved problem` };
       return { color: '#eab308', label: `${report.severity || 'Moderate'} unresolved problem` };
     };
@@ -155,7 +155,7 @@
           </div>
           <div ref={mapNode} className="h-full w-full" aria-label="Move the map to place its center on the report location" />
           <div className="location-picker-pin" aria-hidden="true">
-            <Icon name="map-pin" className="w-10 h-10 text-sky-400 drop-shadow-lg" />
+            <Icon name="map-pin" className="w-10 h-10 text-red-500 drop-shadow-lg" />
           </div>
         </div>
       );
@@ -304,6 +304,7 @@
     // --- MAIN APP COMPONENT ---
     function App() {
       const [activeTab, setActiveTab] = useState('landing');
+      const [darkMode, setDarkMode] = useState(() => localStorage.getItem('civicpulse-theme') !== 'light');
       const [reports, setReports] = useState(INITIAL_REPORTS);
       const [selectedReport, setSelectedReport] = useState(INITIAL_REPORTS[0]);
       
@@ -367,6 +368,12 @@
       useEffect(() => { authUserRef.current = authUser; }, [authUser]);
 
       useEffect(() => () => { if (uploadedImage?.startsWith('blob:')) URL.revokeObjectURL(uploadedImage); }, [uploadedImage]);
+
+      useEffect(() => {
+        document.documentElement.classList.toggle('dark', darkMode);
+        localStorage.setItem('civicpulse-theme', darkMode ? 'dark' : 'light');
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', darkMode ? '#0B0F17' : '#f5f5f7');
+      }, [darkMode]);
 
       useEffect(() => {
         loadSession();
@@ -456,10 +463,10 @@
 
       const updateContractorJob = async (offer, status) => {
         const proof = contractorProofs[offer.offer_id] || {};
-        if (status === 'Proof Submitted' && (!proof.image || !proof.report_url?.trim() || !proof.note?.trim())) return showToast('Add a completion photo, report link, and short summary.');
+        if (status === 'Proof Submitted' && (!proof.image || !proof.report_url?.trim() || !proof.note?.trim() || !proof.public_access_confirmed)) return showToast('Add a photo, public Drive report, summary, and confirm link access.');
         try {
           if (status === 'Proof Submitted') {
-            const data = new FormData(); data.append('image', proof.image); data.append('report_url', proof.report_url.trim()); data.append('note', proof.note.trim());
+            const data = new FormData(); data.append('image', proof.image); data.append('report_url', proof.report_url.trim()); data.append('note', proof.note.trim()); data.append('public_access_confirmed', String(proof.public_access_confirmed));
             await api(`/offers/${offer.offer_id}/proof`, {method:'POST', body:data});
           } else {
             await api(`/offers/${offer.offer_id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
@@ -636,16 +643,6 @@
         } catch (error) { showToast(error.message); }
       };
 
-      const verifyAsReporter = async (report, outcome) => {
-        const token = sessionStorage.getItem(`civicpulse-reporter-${report.id}`);
-        if (!token) return showToast('This browser does not hold the private reporter verification link.');
-        try {
-          const updated = await api(`/complaints/${report.id}/reporter-verification`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,outcome})});
-          setSelectedReport(normalizeReport(updated)); await refreshData();
-          showToast(outcome === 'fixed' ? 'Thank you. Your confirmation was recorded.' : 'Your concern was recorded and the case was returned for review.');
-        } catch (error) { showToast(error.message); }
-      };
-
       const updateStatus = async (report, status) => {
         try {
           const updated = await api(`/complaints/${report.id}/status`, {
@@ -689,10 +686,10 @@
         } catch (error) { showToast(error.message); }
       };
 
-      const changeOfferStatus = async (offer, status) => {
+      const changeOfferStatus = async (offer, status, note = '') => {
         try {
-          await api(`/offers/${offer.offer_id}/status`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status,note:`Contractor work order marked ${status}.`})});
-          await refreshData(); await inspectIncident(operationDetail.complaint); showToast(`Work order ${status}.`);
+          await api(`/offers/${offer.offer_id}/status`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status,note:note || `Contractor work order marked ${status}.`})});
+          await refreshData(authUser); await inspectIncident(operationDetail.complaint); showToast(status === 'Approved' ? 'Final review approved and payment released.' : `Work order ${status}.`);
         } catch (error) { showToast(error.message); }
       };
 
@@ -745,7 +742,7 @@
       const releaseFunds = async (request) => {
         try {
           await api(`/repair-requests/${request.request_id}/release-funds`, { method: 'POST' });
-          await refreshData(); showToast('Proof verified. Demo payment approved; reporter confirmation remains required.');
+          await refreshData(); showToast('Proof verified, payment approved, and case closed.');
         } catch (error) { showToast(error.message); }
       };
 
@@ -775,9 +772,15 @@
         setQueueFilters({days:'all',state:'unresolved',category:'all',severity:'all',sort:'priority'});
       };
 
+      const displayedAdminReports = adminView === 'review'
+        ? filteredAdminReports.filter(item => item.needs_review || item.status === 'Needs Review')
+        : adminView === 'proofs'
+          ? filteredAdminReports.filter(item => item.status === 'Evidence Uploaded')
+          : filteredAdminReports;
+
       const resolvedReports = reports.filter(item => item.status === 'Resolved' || item.fully_verified).length;
       const criticalOpenReports = reports.filter(item => item.status !== 'Resolved' && ['Critical','High'].includes(item.severity)).length;
-      const verifiedReports = reports.filter(item => item.fully_verified || Object.values(item.resolution_approvals || {}).filter(Boolean).length === 3).length;
+      const verifiedReports = reports.filter(item => item.fully_verified || ['contractor', 'government'].every(key => item.resolution_approvals?.[key])).length;
       const landingStats = [
         { label: 'Reports visible', val: reports.length.toLocaleString(), trend: apiOnline && !reports.some(report=>report.data_label === 'Demo') ? 'Live public records' : 'Clearly labeled demo records', icon: 'map-pinned' },
         { label: 'Resolved', val: resolvedReports.toLocaleString(), trend: 'Evidence-backed closure', icon: 'badge-check' },
@@ -787,6 +790,7 @@
 
       return (
         <div className="min-h-screen flex flex-col bg-[#0B0F17] transition-colors duration-200">
+          <a href="#main-content" className="skip-link">Skip to main content</a>
           {/* HEADER / NAVIGATION */}
           <header className="sticky top-0 z-50 bg-[#070A11] border-b border-slate-800/80">
             <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
@@ -828,6 +832,9 @@
               </nav>
 
               <div className="flex shrink-0 items-center">
+                <button onClick={() => setDarkMode(value => !value)} aria-label={`Switch to ${darkMode ? 'light' : 'dark'} mode`} title={`Switch to ${darkMode ? 'light' : 'dark'} mode`} className="mr-2 w-9 h-9 rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:text-sky-400 flex items-center justify-center transition-colors">
+                  <Icon name={darkMode ? 'sun' : 'moon'} className="w-4 h-4" />
+                </button>
                 <button 
                   onClick={() => setActiveTab('admin')}
                   className="px-3.5 py-2.5 rounded-lg text-xs font-semibold bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 transition-colors flex items-center gap-1.5"
@@ -916,7 +923,7 @@
                       </div>
 
                       <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
-                        {['No account needed to file', 'Public SLA & Case ID', '3-Party proof to close'].map(item => (
+                        {['No account needed to file', 'Public SLA & Case ID', '2-step verified closure'].map(item => (
                           <span key={item} className="flex items-center gap-2">
                             <div className="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
                               <Icon name="check" className="w-2.5 h-2.5 text-emerald-400" />
@@ -945,10 +952,10 @@
 
                         <div className="py-5 space-y-4">
                           {[
-                            ['camera', 'Citizen Evidence Logged', 'Photo, EXIF GPS & area details', 'complete'],
+                            ['camera', 'Citizen Evidence Logged', 'Photo and confirmed location', 'complete'],
                             ['brain-circuit', 'Gemini Vision AI Triage', 'Severity, duplicates & agency suggested', 'complete'],
                             ['building-2', 'Operational Assignment', 'Contractor SLA & budget cap locked', 'active'],
-                            ['shield-check', '3-Party Verification', 'After-photo match & reporter approval', 'pending']
+                            ['shield-check', 'Two-Party Verification', 'Contractor proof and authority approval', 'pending']
                           ].map(([icon, title, detail, state]) => (
                             <div key={title} className="grid grid-cols-[2.75rem_1fr_auto] gap-3.5 items-center p-2 rounded-xl hover:bg-slate-800/30 transition-colors">
                               <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border transition-all ${
@@ -1016,7 +1023,7 @@
                         Simple for citizens. Structured for authorities.
                       </h2>
                       <p className="mt-3 text-sm sm:text-base leading-relaxed text-slate-400">
-                        Every incident creates a verifiable trail from initial citizen submission to three-party signed verification.
+                        Every incident creates a clear trail from citizen report to contractor evidence and authority approval.
                       </p>
                     </div>
 
@@ -1025,7 +1032,7 @@
                         { step: '01', icon: 'camera', title: 'Capture Evidence', desc: 'Upload photo with auto-detected GPS or choose exact map coordinates. AI prepares the preliminary triage.' },
                         { step: '02', icon: 'brain-circuit', title: 'AI Classification', desc: 'Gemini Vision assigns category, severity score, duplicate detection, and department routing with confidence scores.' },
                         { step: '03', icon: 'clipboard-check', title: 'Operational Assignment', desc: 'Authorities assign approved contractors or eligible supervised community youth cleanup teams with fixed SLAs.' },
-                        { step: '04', icon: 'shield-check', title: '3-Party Verification', desc: 'Before/after photo matches, contractor confirmation, reporter sign-off, and authority approval close the issue.' }
+                        { step: '04', icon: 'shield-check', title: 'Verified Closure', desc: 'Contractor evidence and authority review close the issue. Citizens need no account.' }
                       ].map((item) => (
                         <article key={item.step} className="glass-card p-6 rounded-2xl border border-slate-800/80 flex flex-col justify-between">
                           <div>
@@ -1121,14 +1128,6 @@
                       </div>
                     </div>
 
-                    <div className="text-left glass-card border border-slate-800/80 p-4 sm:p-5 rounded-2xl flex items-start gap-3.5">
-                      <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0">
-                        <Icon name="shield-check" className="w-4 h-4" />
-                      </div>
-                      <p className="text-xs text-slate-400 leading-relaxed">
-                        <strong className="text-slate-200">Cryptographic Privacy Guarantee:</strong> If the photo contains GPS EXIF metadata, CivicPulse extracts it only for your review. Published photos are re-encoded and completely stripped of personal metadata.
-                      </p>
-                    </div>
                   </div>
                 )}
 
@@ -1139,7 +1138,7 @@
                       {/* EVIDENCE PREVIEW / SCANNER */}
                       <div>
                         <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2">
-                          <span>Evidence Payload</span>
+                          <span>Photo preview</span>
                           {uploadedImage && <span className="text-emerald-400">● Usable photo</span>}
                         </div>
                         {uploadedImage ? (
@@ -1152,7 +1151,7 @@
                                 <div className="absolute bottom-3 inset-x-3 z-30 bg-slate-950/90 backdrop-blur-md border border-sky-500/40 rounded-xl p-2.5 text-center shadow-lg">
                                   <div className="text-xs font-bold text-sky-300 font-mono flex items-center justify-center gap-2">
                                     <Icon name="scan" className="w-4 h-4 text-sky-400 animate-spin" />
-                                    NEURAL VISION SCANNING...
+                                    Analyzing photo…
                                   </div>
                                 </div>
                               </>
@@ -1235,7 +1234,7 @@
                             <div>
                               <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5 font-mono">
                                 <Icon name="map-pin" className="w-4 h-4 text-emerald-400" />
-                                PHOTO GPS EMBEDDED IN EXIF
+                                PHOTO LOCATION AVAILABLE
                               </div>
                               <div className="text-[11px] text-slate-300 mt-1 font-mono">
                                 {photoLocation.latitude.toFixed(5)}, {photoLocation.longitude.toFixed(5)}
@@ -1489,7 +1488,7 @@
                     </div>
                   </div>
 
-                  {/* EVIDENCE & 3-PARTY VERIFICATION COLUMN */}
+                  {/* EVIDENCE & VERIFICATION COLUMN */}
                   <div className="lg:col-span-2 glass-panel border border-slate-800 rounded-3xl p-6 sm:p-7 space-y-6 shadow-xl">
                     <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
                       <h2 className="text-xs font-bold text-sky-400 uppercase tracking-widest font-mono flex items-center gap-2">
@@ -1503,23 +1502,22 @@
                       )}
                     </div>
 
-                    {/* 3-PARTY STAKEHOLDER CONSENSUS */}
+                    {/* TWO-PARTY VERIFICATION */}
                     <div>
-                      <div className="text-[11px] font-mono text-slate-400 mb-2 font-semibold">3-PARTY RESOLUTION CONSENSUS</div>
-                      <div className="grid grid-cols-3 gap-2.5">
+                      <div className="text-[11px] font-mono text-slate-400 mb-2 font-semibold">RESOLUTION VERIFICATION</div>
+                      <div className="grid grid-cols-2 gap-2.5">
                         {[
                           ['contractor', 'Contractor Sign-off', 'hard-hat'],
-                          ['reporter', 'Citizen Reporter', 'user-check'],
                           ['government', 'Authority Inspector', 'landmark']
                         ].map(([key, label, icon]) => {
                           const approved = selectedReport.resolution_approvals?.[key];
-                          const canApprove = authUser?.role === 'admin' && key !== 'reporter';
+                          const canApprove = authUser?.role === 'admin';
                           return (
                             <button 
                               key={key} 
                               disabled={!canApprove || approved} 
                               onClick={() => canApprove && !approved && approveResolution(selectedReport, key)} 
-                              title={key === 'reporter' ? 'Only the original reporter can verify with their private link' : canApprove ? 'Record verified approval' : 'Authority approval required'} 
+                              title={canApprove ? 'Record verified approval' : 'Authority approval required'}
                               className={`p-3 rounded-2xl border flex flex-col items-center justify-center gap-1.5 transition-all text-center ${
                                 approved 
                                   ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-glow-emerald' 
@@ -1537,29 +1535,6 @@
                       </div>
                     </div>
 
-                    {/* REPORTER VERIFICATION PANEL */}
-                    {selectedReport.afterImage && sessionStorage.getItem(`civicpulse-reporter-${selectedReport.id}`) && (
-                      <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4 space-y-2.5 reveal-up">
-                        <div className="flex items-center gap-2 text-xs font-bold text-white">
-                          <Icon name="key" className="w-4 h-4 text-sky-400" />
-                          <span>Private Reporter Action (Token Authenticated)</span>
-                        </div>
-                        <p className="text-[11px] text-slate-300 leading-relaxed">
-                          Does the resolution photo match the on-ground reality? Your decision directly updates the public transparency ledger.
-                        </p>
-                        <div className="grid grid-cols-3 gap-2 pt-1">
-                          <button onClick={() => verifyAsReporter(selectedReport, 'not_fixed')} className="rounded-xl border border-red-500/40 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-500/25 transition-colors">
-                            ✕ Not Fixed
-                          </button>
-                          <button onClick={() => verifyAsReporter(selectedReport, 'partially_fixed')} className="rounded-xl border border-amber-500/40 bg-amber-500/15 px-3 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 transition-colors">
-                            △ Partial Work
-                          </button>
-                          <button onClick={() => verifyAsReporter(selectedReport, 'fixed')} className="rounded-xl bg-emerald-500 hover:bg-emerald-400 px-3 py-2 text-xs font-bold text-slate-950 transition-colors shadow-md">
-                            ✓ Fixed & Satisfied
-                          </button>
-                        </div>
-                      </div>
-                    )}
 
                     {/* CONTRACTOR STAR RATING */}
                     {selectedReport.afterImage && selectedReport.assigned_contractor_id && (authUser?.role === 'admin' || sessionStorage.getItem(`civicpulse-reporter-${selectedReport.id}`)) && (
@@ -1703,7 +1678,7 @@
                       <div className="rounded-2xl glass-card p-4 border border-slate-800">
                         <div className="text-slate-400 font-mono text-[10px]">STATUS</div>
                         <div className={`font-bold mt-1 ${accountabilityReceipt.resolution.fully_verified ? 'text-emerald-400' : 'text-amber-400'}`}>
-                          {accountabilityReceipt.resolution.fully_verified ? 'Fully Verified (3/3)' : 'Awaiting Approvals'}
+                          {accountabilityReceipt.resolution.fully_verified ? 'Verified (2/2)' : 'Awaiting Approval'}
                         </div>
                       </div>
                     </div>
@@ -2008,8 +1983,12 @@
                           {job.status === 'In Progress' && (
                             <div className="w-full grid gap-2 sm:grid-cols-2">
                               <label className="glass-input rounded-xl p-3 text-xs text-slate-300 cursor-pointer"><span>{contractorProofs[job.offer_id]?.image?.name || 'Choose completion photo'}</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="sr-only" onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),image:e.target.files?.[0] || null}})} /></label>
-                              <input type="url" value={contractorProofs[job.offer_id]?.report_url || ''} onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),report_url:e.target.value}})} placeholder="Work report link (https://…)" className="glass-input rounded-xl p-3 text-xs text-white" />
+                              <input type="url" value={contractorProofs[job.offer_id]?.report_url || ''} onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),report_url:e.target.value}})} placeholder="Public Google Drive report link" className="glass-input rounded-xl p-3 text-xs text-white" />
                               <textarea value={contractorProofs[job.offer_id]?.note || ''} onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),note:e.target.value}})} placeholder="Short completion summary" rows="2" className="sm:col-span-2 glass-input rounded-xl p-3 text-xs text-white resize-none" />
+                              <label className="sm:col-span-2 flex items-start gap-2.5 rounded-xl border border-slate-700 bg-slate-900/60 p-3 text-xs text-slate-300 cursor-pointer">
+                                <input type="checkbox" checked={Boolean(contractorProofs[job.offer_id]?.public_access_confirmed)} onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),public_access_confirmed:e.target.checked}})} className="mt-0.5 accent-sky-500" />
+                                <span>I confirm the Google Drive report is set to <strong className="text-white">Anyone with the link can view</strong>.</span>
+                              </label>
                               <button onClick={() => updateContractorJob(job, 'Proof Submitted')} className="sm:col-span-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold">Submit completed work for review</button>
                             </div>
                           )}
@@ -2054,15 +2033,16 @@
                   {/* COMMAND HEADER */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-panel border border-slate-800 p-6 rounded-3xl shadow-xl">
                     <div>
-                      <div className="text-[10px] font-mono tracking-widest text-sky-400 font-bold uppercase">MUNICIPAL OPERATIONS COMMAND</div>
-                      <h1 className="text-xl sm:text-2xl font-extrabold text-white mt-1 tracking-tight">Executive Action Center</h1>
-                      <p className="text-xs text-slate-400 mt-0.5">Filter incoming telemetry, inspect AI confidence scores, and dispatch verified contractors.</p>
+                      <div className="text-xs text-sky-400 font-semibold">Municipal operations</div>
+                      <h1 className="text-xl sm:text-2xl font-bold text-white mt-1 tracking-tight">Authority dashboard</h1>
+                      <p className="text-sm text-slate-400 mt-1">Review priority cases, approve evidence, and manage assignments.</p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
                       {[
                         ['queue', 'list-filter', 'Work Queue'],
                         ['review', 'user-check', `Human Review (${reports.filter(r => r.needs_review || r.status === 'Needs Review').length})`],
+                        ['proofs', 'clipboard-check', `Proof Reviews (${reports.filter(r => r.status === 'Evidence Uploaded').length})`],
                         ['map', 'map', 'Spatial Map'],
                         ['contractors', 'hard-hat', 'Contractors'],
                         ['whatsapp', 'message-circle', 'WhatsApp'],
@@ -2071,7 +2051,7 @@
                         <button
                           key={id}
                           onClick={() => setAdminView(id)}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold font-mono transition-all flex items-center gap-1.5 ${adminView === id
+                          className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${adminView === id
                               ? 'bg-sky-500 text-slate-950 shadow-glow-sky'
                               : 'glass-card border border-slate-800 text-slate-300 hover:text-white'
                             }`}
@@ -2086,17 +2066,17 @@
                   {/* KPI STATS ROW */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[
-                      { label: 'Critical Unresolved', val: dashboard?.stats?.critical_count ?? reports.filter(r => r.severity === 'Critical' && r.status !== 'Resolved').length, alert: true, icon: 'alert-triangle' },
-                      { label: 'SLA Violations', val: dashboard?.stats?.overdue_cases ?? reports.filter(r => (r.sla_status || '').startsWith('Overdue')).length, alert: true, icon: 'clock' },
-                      { label: 'Active Queue', val: dashboard?.stats?.active_issues ?? reports.filter(r => r.status !== 'Resolved').length, alert: false, icon: 'inbox' },
-                      { label: 'Clearance Rate', val: `${dashboard?.stats?.resolution_rate ?? Math.round(100 * reports.filter(r => r.status === 'Resolved').length / Math.max(reports.length, 1))}%`, alert: false, icon: 'check-circle' }
+                      { label: 'Human Review', val: reports.filter(r => r.needs_review || r.status === 'Needs Review').length, alert: true, icon: 'user-check' },
+                      { label: 'Proof Reviews', val: reports.filter(r => r.status === 'Evidence Uploaded').length, alert: false, icon: 'clipboard-check' },
+                      { label: 'SLA Overdue', val: dashboard?.stats?.overdue_cases ?? reports.filter(r => (r.sla_status || '').startsWith('Overdue')).length, alert: true, icon: 'clock' },
+                      { label: 'Active Work', val: dashboard?.stats?.active_issues ?? reports.filter(r => r.status !== 'Resolved').length, alert: false, icon: 'inbox' }
                     ].map((kpi, idx) => (
                       <div key={idx} className={`glass-panel rounded-2xl p-5 border transition-all ${kpi.alert && kpi.val > 0 ? 'border-red-500/40 bg-red-950/15' : 'border-slate-800'}`}>
                         <div className="flex items-center justify-between text-slate-400">
-                          <span className="text-xs font-mono font-semibold">{kpi.label}</span>
+                          <span className="text-xs font-semibold">{kpi.label}</span>
                           <Icon name={kpi.icon} className={`w-4 h-4 ${kpi.alert && kpi.val > 0 ? 'text-red-400' : 'text-sky-400'}`} />
                         </div>
-                        <div className={`text-3xl font-extrabold font-mono mt-2 tracking-tight ${kpi.alert && kpi.val > 0 ? 'text-red-400' : 'text-white'}`}>
+                        <div className={`text-3xl font-bold mt-2 tracking-tight ${kpi.alert && kpi.val > 0 ? 'text-red-400' : 'text-white'}`}>
                           {kpi.val}
                         </div>
                       </div>
@@ -2110,19 +2090,19 @@
                         <Icon name="sparkles" className="w-5 h-5" />
                       </div>
                       <div>
-                        <div className="text-[10px] font-mono font-bold text-sky-400 uppercase tracking-wider">AI GOVERNANCE INTELLIGENCE</div>
+                        <div className="text-xs font-semibold text-sky-400">Suggested priority summary</div>
                         <p className="text-xs sm:text-sm text-slate-200 mt-1 leading-relaxed">{dashboard.insight}</p>
                       </div>
                     </div>
                   )}
 
                   {/* QUEUE FILTERS */}
-                  {['queue', 'map', 'review'].includes(adminView) && (
+                  {['queue', 'map', 'review', 'proofs'].includes(adminView) && (
                     <div className="glass-panel border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xl">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <h2 className="text-sm font-bold text-white font-mono uppercase tracking-wider">Telemetry Queue Filters</h2>
-                          <p className="text-[11px] text-slate-400 font-mono">Showing {filteredAdminReports.length} of {reports.length} total municipal incidents</p>
+                          <h2 className="text-sm font-semibold text-white">Find and filter cases</h2>
+                          <p className="text-xs text-slate-400 mt-0.5">Showing {filteredAdminReports.length} of {reports.length} municipal incidents</p>
                         </div>
                         <button onClick={resetQueueFilters} className="text-xs text-sky-400 hover:text-sky-300 font-mono font-semibold underline underline-offset-4">
                           Reset All Filters
@@ -2307,11 +2287,11 @@
                   )}
 
                   {/* WORK QUEUE VIEW */}
-                  {['queue', 'review'].includes(adminView) && (
+                  {['queue', 'review', 'proofs'].includes(adminView) && (
                     <div className="glass-panel border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
                       <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between">
-                        <h2 className="text-xs font-bold text-white font-mono uppercase tracking-wider">Real-Time Municipal Queue</h2>
-                        <span className="text-xs font-mono text-slate-400">{filteredAdminReports.length} shown</span>
+                        <h2 className="text-xs font-bold text-white font-mono uppercase tracking-wider">{adminView === 'proofs' ? 'Contractor proof review' : adminView === 'review' ? 'Human review queue' : 'Municipal work queue'}</h2>
+                        <span className="text-xs font-mono text-slate-400">{displayedAdminReports.length} shown</span>
                       </div>
 
                       {/* INCIDENT WORKSPACE DRAWER */}
@@ -2372,15 +2352,31 @@
                                   {operationDetail.offers.length ? (
                                     <div className="space-y-2">
                                       {operationDetail.offers.map(offer => (
-                                        <div key={offer.offer_id} className="flex items-center justify-between gap-2 glass-card p-2.5 rounded-xl border border-slate-800 text-xs font-mono">
-                                          <div>
-                                            <span className="text-white font-bold">{offer.contractor_name}</span>
-                                            <span className="text-slate-400"> · PKR {Number(offer.budget_cap).toLocaleString()} · {offer.status}</span>
+                                        <div key={offer.offer_id} className="glass-card p-3 rounded-xl border border-slate-800 text-xs">
+                                          <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div>
+                                              <span className="text-white font-bold">{offer.contractor_name}</span>
+                                              <span className="text-slate-400"> · PKR {Number(offer.budget_cap).toLocaleString()}</span>
+                                            </div>
+                                            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${offer.status === 'Proof Submitted' ? 'bg-amber-500/15 text-amber-300' : offer.status === 'Approved' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-sky-500/10 text-sky-300'}`}>{offer.status}</span>
                                           </div>
-                                          <div className="flex gap-1.5">
+                                          {offer.status === 'Proof Submitted' && (
+                                            <div className="mt-3 grid sm:grid-cols-[88px_1fr] gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                                              {offer.after_image_url && <img src={absoluteMediaUrl(offer.after_image_url)} alt="Contractor completion evidence" className="h-20 w-full rounded-lg object-cover" />}
+                                              <div className="space-y-2 min-w-0">
+                                                <p className="text-slate-300 leading-relaxed">{offer.note || 'Completion proof submitted for final review.'}</p>
+                                                <a href={offer.report_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sky-400 font-semibold hover:underline"><Icon name="external-link" className="w-3.5 h-3.5" />Open public Drive report</a>
+                                                <div className="flex flex-wrap gap-2 pt-1">
+                                                  <button onClick={() => changeOfferStatus(offer, 'In Progress', 'Final review requested changes; contractor must resubmit proof.')} className="px-3 py-2 rounded-lg border border-slate-600 text-slate-300 font-semibold">Request changes</button>
+                                                  <button onClick={() => changeOfferStatus(offer, 'Approved', 'Final proof approved; contractor payment released.')} className="px-3 py-2 rounded-lg bg-emerald-500 text-slate-950 font-bold">Approve & release payment</button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+                                          {offer.status === 'Approved' && <div className="mt-2 flex items-center gap-2 text-emerald-400"><Icon name="circle-check" className="w-4 h-4" /><span>Final review approved · Payment released</span></div>}
+                                          <div className="flex gap-1.5 mt-2">
                                             {offer.status === 'Sent' && <button onClick={() => changeOfferStatus(offer, 'Accepted')} className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">Accept</button>}
                                             {offer.status === 'Accepted' && <button onClick={() => changeOfferStatus(offer, 'In Progress')} className="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[10px] font-bold">Start</button>}
-                                            {offer.status === 'Proof Submitted' && <button onClick={() => changeOfferStatus(offer, 'Approved')} className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">Verify work</button>}
                                           </div>
                                         </div>
                                       ))}
@@ -2409,7 +2405,7 @@
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-800/60 text-xs">
-                            {(adminView === 'review' ? filteredAdminReports.filter(item => item.needs_review || item.status === 'Needs Review') : filteredAdminReports).map((item) => (
+                            {displayedAdminReports.map((item) => (
                               <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
                                 <td className="p-4 font-mono font-bold text-sky-400">{item.id}</td>
                                 <td className="p-4">
@@ -2450,7 +2446,7 @@
                                 </td>
                               </tr>
                             ))}
-                            {!filteredAdminReports.length && (
+                            {!displayedAdminReports.length && (
                               <tr>
                                 <td colSpan="6" className="p-12 text-center text-xs text-slate-400">
                                   No incidents match the active filter criteria.

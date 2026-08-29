@@ -28,6 +28,7 @@ async def list_offers(user: dict = Depends(require_user)):
 async def submit_work_proof(
     offer_id: str,
     report_url: str = Form(..., min_length=8, max_length=2048),
+    public_access_confirmed: bool = Form(...),
     note: str = Form(..., min_length=3, max_length=1000),
     image: UploadFile = File(...),
     user: dict = Depends(require_user),
@@ -42,8 +43,11 @@ async def submit_work_proof(
         raise HTTPException(status_code=403, detail="This work order is not assigned to your account")
     if offer.get("status") != "In Progress":
         raise HTTPException(status_code=409, detail="Proof can only be submitted for work currently in progress")
-    if not report_url.startswith(("https://", "http://")):
-        raise HTTPException(status_code=422, detail="Report link must be a valid web address")
+    normalized_report_url = report_url.strip()
+    if not normalized_report_url.startswith(("https://drive.google.com/", "https://docs.google.com/")):
+        raise HTTPException(status_code=422, detail="Submit a Google Drive or Google Docs report link")
+    if not public_access_confirmed:
+        raise HTTPException(status_code=422, detail="Confirm that anyone with the link can view the Drive report")
     complaint = await civic_repo.find_one("complaints", "complaint_id", offer["complaint_id"])
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
@@ -55,16 +59,16 @@ async def submit_work_proof(
     approvals["contractor"] = True
     history = list(complaint.get("status_history", []))
     history.append({"status": "Evidence Uploaded", "note": note, "at": timestamp, "actor_id": user.get("user_id"), "actor_role": "contractor"})
-    evidence = {"after_image_url": image_url, "report_url": report_url, "completion_note": note, "uploaded_by": offer.get("contractor_name"), "uploaded_at": timestamp}
+    evidence = {"after_image_url": image_url, "report_url": normalized_report_url, "report_access": "Public - anyone with the link", "completion_note": note, "uploaded_by": offer.get("contractor_name"), "uploaded_at": timestamp}
     await civic_repo.update_one("offers", "offer_id", offer_id, {
         "status": "Proof Submitted", "note": note, "after_image_url": image_url,
-        "report_url": report_url, "proof_submitted_at": timestamp, "updated_at": timestamp,
+        "report_url": normalized_report_url, "report_access": "Public - anyone with the link", "proof_submitted_at": timestamp, "updated_at": timestamp,
     })
     await civic_repo.update_one("complaints", "complaint_id", offer["complaint_id"], {
         "status": "Evidence Uploaded", "resolution_evidence": evidence,
         "resolution_approvals": approvals, "status_history": history, "updated_at": timestamp,
     })
-    await record_audit_event("offer", offer_id, "proof_submitted", user, {"status": "In Progress"}, {"status": "Proof Submitted", "report_url": report_url}, note)
+    await record_audit_event("offer", offer_id, "proof_submitted", user, {"status": "In Progress"}, {"status": "Proof Submitted", "report_url": normalized_report_url, "report_access": "public-confirmed"}, note)
     return {"offer_id": offer_id, "status": "Proof Submitted", "resolution_evidence": evidence}
 
 
@@ -149,7 +153,7 @@ async def update_offer_status(offer_id: str, payload: OfferStatusUpdate, user: d
         "Sent": {"Accepted", "Rejected"},
         "Accepted": {"In Progress", "Rejected"},
         "In Progress": {"Proof Submitted"},
-        "Proof Submitted": {"Approved", "Rejected"},
+        "Proof Submitted": {"Approved", "In Progress"},
     }
     if payload.status == offer.get("status"):
         raise HTTPException(status_code=409, detail=f"Work order is already {payload.status}")
@@ -162,6 +166,15 @@ async def update_offer_status(offer_id: str, payload: OfferStatusUpdate, user: d
         if not complaint or not complaint.get("resolution_evidence"):
             raise HTTPException(status_code=409, detail="Stored completion evidence is required before approving contractor work")
     offer_changes = {"status": payload.status, "note": payload.note, "updated_at": now_utc()}
+    if offer.get("status") == "Proof Submitted" and payload.status == "In Progress":
+        offer_changes.update({"after_image_url": None, "report_url": None, "report_access": None, "proof_submitted_at": None})
+    if payload.status == "Approved":
+        offer_changes.update({
+            "payment_status": "Released",
+            "payment_amount": offer.get("budget_cap"),
+            "payment_released_at": now_utc(),
+            "approved_by": user.get("user_id"),
+        })
     updated = await civic_repo.update_one("offers", "offer_id", offer_id, offer_changes)
     complaint = await civic_repo.find_one("complaints", "complaint_id", offer["complaint_id"])
     if complaint and payload.status in {"Accepted", "In Progress", "Rejected"}:
@@ -169,21 +182,26 @@ async def update_offer_status(offer_id: str, payload: OfferStatusUpdate, user: d
         complaint_status = {"Accepted": "Assigned", "In Progress": "In Progress", "Rejected": complaint.get("status") if other_active else "Submitted"}[payload.status]
         history = complaint.get("status_history", [])
         history.append({"status": f"Contractor {payload.status}", "note": payload.note or f"Offer {offer_id} was {payload.status.lower()}.", "at": now_utc()})
-        await civic_repo.update_one("complaints", "complaint_id", offer["complaint_id"], {
+        complaint_changes = {
             "status": complaint_status,
             "assigned_contractor_id": offer.get("contractor_id") if payload.status != "Rejected" else None,
             "assigned_contractor_name": offer.get("contractor_name") if payload.status != "Rejected" else None,
             "status_history": history,
-        })
+        }
+        if offer.get("status") == "Proof Submitted" and payload.status == "In Progress":
+            approvals = dict(complaint.get("resolution_approvals") or {})
+            approvals["contractor"] = False
+            complaint_changes.update({"resolution_evidence": None, "resolution_approvals": approvals})
+        await civic_repo.update_one("complaints", "complaint_id", offer["complaint_id"], complaint_changes)
     elif complaint and payload.status == "Approved":
         approvals = dict(complaint.get("resolution_approvals") or {})
         approvals["government"] = True
         history = list(complaint.get("status_history", []))
-        history.append({"status": "Verification", "note": payload.note or "Authority approved contractor completion proof.", "at": now_utc(), "actor_id": user.get("user_id"), "actor_role": "admin"})
+        history.append({"status": "Resolved", "note": payload.note or "Authority approved the final review and released contractor payment.", "at": now_utc(), "actor_id": user.get("user_id"), "actor_role": "admin"})
         await civic_repo.update_one("complaints", "complaint_id", offer["complaint_id"], {
-            "status": "Verification", "resolution_approvals": approvals,
-            "fully_verified": all(approvals.get(key) for key in ("contractor", "reporter", "government")),
-            "status_history": history, "updated_at": now_utc(),
+            "status": "Resolved", "resolution_approvals": approvals,
+            "fully_verified": all(approvals.get(key) for key in ("contractor", "government")),
+            "resolved_at": now_utc(), "status_history": history, "updated_at": now_utc(),
         })
     await record_audit_event("offer", offer_id, "status_transition", user, {"status": offer.get("status")}, {"status": payload.status}, payload.note)
     return updated

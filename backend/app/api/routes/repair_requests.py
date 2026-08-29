@@ -169,12 +169,13 @@ async def release_funds(request_id: str, _admin: dict = Depends(require_admin)):
     })
     complaint = await civic_repo.find_one("complaints", "complaint_id", request["complaint_id"])
     history = complaint.get("status_history", [])
-    history.append({"status": "Government Verified", "note": f"Community repair proof verified; funds released for {request_id}. Reporter confirmation remains pending.", "at": now_utc()})
+    history.append({"status": "Resolved", "note": f"Community repair proof verified and funds released for {request_id}.", "at": now_utc()})
     await civic_repo.update_one("complaints", "complaint_id", request["complaint_id"], {
-        "status": "Evidence Uploaded",
+        "status": "Resolved",
         "resolution_evidence": request["proof"],
-        "resolution_approvals": {"contractor": True, "reporter": False, "government": True},
-        "fully_verified": False,
+        "resolution_approvals": {"contractor": True, "government": True},
+        "fully_verified": True,
+        "resolved_at": now_utc(),
         "status_history": history,
     })
     await record_audit_event("repair_request", request_id, "payment_approved_after_proof", _admin, {"status": request.get("status"), "funds_status": request.get("funds_status")}, {"status": "Completed", "funds_status": "Payment Approved (Demo)"}, "Completion proof reviewed by authority")
