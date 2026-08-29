@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from app.core.security import require_admin
 
 from app.db.repository import civic_repo, public_id
@@ -6,6 +7,10 @@ from app.schemas.contractor import ContractorCreate
 from app.services.contractors.matching import rank_contractors
 
 router = APIRouter(prefix="/api/contractors", tags=["contractors"])
+
+
+class ContractorApproval(BaseModel):
+    approved: bool
 
 
 @router.get("")
@@ -29,6 +34,18 @@ async def register_contractor(payload: ContractorCreate, _admin: dict = Depends(
         "trust_score": 70 if payload.verification_id else 45,
     }
     return await civic_repo.insert_one("contractors", contractor)
+
+
+@router.patch("/{contractor_id}/approval")
+async def approve_contractor(contractor_id: str, payload: ContractorApproval, _admin: dict = Depends(require_admin)):
+    contractor = await civic_repo.find_one("contractors", "contractor_id", contractor_id)
+    if not contractor:
+        raise HTTPException(status_code=404, detail="Contractor not found")
+    return await civic_repo.update_one("contractors", "contractor_id", contractor_id, {
+        "verified": payload.approved, "available": payload.approved,
+        "approval_status": "Approved" if payload.approved else "Rejected",
+        "trust_score": 70 if payload.approved else 30,
+    })
 
 
 @router.get("/match/{complaint_id}")

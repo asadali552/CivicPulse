@@ -23,6 +23,7 @@ from app.schemas.complaint import (
     OfficerOverride,
     ResolutionEvidenceCreate,
     ResolutionApprovalCreate,
+    ContractorRatingCreate,
 )
 from app.services.ai.gemini import analyze_complaint
 from app.services.priority import calculate_priority, with_current_priority
@@ -47,6 +48,22 @@ from app.services.reporter_access import create_reporter_access, verify_reporter
 router = APIRouter(prefix="/api/complaints", tags=["complaints"])
 intake_attempts: dict[str, deque] = defaultdict(deque)
 ANALYSIS_TOKEN_TTL_SECONDS = 15 * 60
+
+
+async def _save_contractor_rating(complaint: dict, source: str, score: int):
+    contractor_id = complaint.get("assigned_contractor_id")
+    if not contractor_id:
+        raise HTTPException(status_code=409, detail="No contractor is assigned to this report")
+    if not complaint.get("resolution_evidence"):
+        raise HTTPException(status_code=409, detail="Completed work evidence is required before rating")
+    ratings = dict(complaint.get("contractor_ratings") or {})
+    ratings[source] = score
+    updated = await civic_repo.update_one("complaints", "complaint_id", complaint["complaint_id"], {"contractor_ratings": ratings})
+    relevant = [item for item in await civic_repo.list_all("complaints") if item.get("assigned_contractor_id") == contractor_id]
+    scores = [value for item in relevant for value in (item.get("contractor_ratings") or {}).values() if isinstance(value, (int, float))]
+    if scores:
+        await civic_repo.update_one("contractors", "contractor_id", contractor_id, {"rating": round(sum(scores) / len(scores), 2), "rating_count": len(scores)})
+    return updated
 
 
 def _analysis_binding(image_bytes: bytes | None, description: str, category_hint: str | None) -> str:
@@ -562,6 +579,24 @@ async def resolution_approval(complaint_id: str, payload: ResolutionApprovalCrea
     })
     await record_audit_event("complaint", complaint_id, "resolution_approval_updated", _admin, {"approvals": complaint.get("resolution_approvals", {})}, {"approvals": approvals, "fully_verified": all_approved}, payload.note, source="human")
     return updated
+
+
+@router.post("/{complaint_id}/authority-contractor-rating")
+async def authority_contractor_rating(complaint_id: str, payload: ContractorRatingCreate, _admin: dict = Depends(require_admin)):
+    complaint = await civic_repo.find_one("complaints", "complaint_id", complaint_id)
+    if not complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    return await _save_contractor_rating(complaint, "authority", payload.score)
+
+
+@router.post("/{complaint_id}/reporter-contractor-rating")
+async def reporter_contractor_rating(complaint_id: str, payload: ContractorRatingCreate):
+    if not payload.token or not await verify_reporter_access(complaint_id, payload.token):
+        raise HTTPException(status_code=403, detail="Only the original reporter can rate this work")
+    complaint = await civic_repo.find_one("complaints", "complaint_id", complaint_id)
+    if not complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    return await _save_contractor_rating(complaint, "public", payload.score)
 
 
 @router.post("/{complaint_id}/reporter-verification")

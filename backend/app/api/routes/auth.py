@@ -19,6 +19,9 @@ class RegisterCreate(BaseModel):
     email: str = Field(..., min_length=5, max_length=160)
     password: str = Field(..., min_length=8, max_length=128)
     phone: str = Field(default="", max_length=40)
+    account_type: str = Field(default="youth", pattern="^(youth|contractor)$")
+    service_area: str = Field(default="", max_length=160)
+    skills: list[str] = Field(default_factory=list, max_length=20)
 
 
 class LoginCreate(BaseModel):
@@ -68,10 +71,18 @@ async def register(payload: RegisterCreate, request: Request, response: Response
     salt, password_hash = hash_password(payload.password)
     user = {
         "user_id": public_id("USR"), "name": payload.name.strip(), "email": email,
-        "phone": payload.phone.strip(), "role": "youth", "password_salt": salt,
+        "phone": payload.phone.strip(), "role": payload.account_type, "password_salt": salt,
         "password_hash": password_hash, "created_at": now_utc(), "updated_at": now_utc(),
     }
     await civic_repo.insert_one("users", user)
+    if payload.account_type == "contractor":
+        await civic_repo.insert_one("contractors", {
+            "contractor_id": public_id("CTR"), "user_id": user["user_id"], "name": user["name"],
+            "contact": user["phone"] or user["email"], "service_area": payload.service_area.strip(),
+            "skills": [skill.strip() for skill in payload.skills if skill.strip()], "rating": 0,
+            "rating_count": 0, "completed_jobs": 0, "distance_km": 0, "verified": False,
+            "available": False, "trust_score": 45, "approval_status": "Pending Approval",
+        })
     token, session = await create_session(user)
     clear_failed_attempts(request)
     set_session_cookie(response, token)

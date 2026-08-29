@@ -72,6 +72,11 @@ class ResolutionApprovalCreate(BaseModel):
     note: Optional[str] = None
 
 
+class ContractorRatingCreate(BaseModel):
+    score: int = Field(..., ge=1, le=5)
+    token: Optional[str] = Field(default=None, max_length=200)
+
+
 class Complaint(BaseModel):
     complaint_id: str
     description: str

@@ -272,6 +272,10 @@
       const [operationLoading, setOperationLoading] = useState(false);
       const [accountabilityReceipt, setAccountabilityReceipt] = useState(null);
       const [offerForm, setOfferForm] = useState({ contractor_id: '', budget_cap: '', sla_hours: 24 });
+      const [contractorJobs, setContractorJobs] = useState([]);
+      const [contractorProfile, setContractorProfile] = useState(null);
+      const [contractors, setContractors] = useState([]);
+      const [contractorForm, setContractorForm] = useState({service_area:'',skills:''});
       const [fundingBudgets, setFundingBudgets] = useState({});
       const [authUser, setAuthUser] = useState(null);
       const [authMode, setAuthMode] = useState('login');
@@ -351,9 +355,14 @@
           if (knownUser?.role === 'admin') {
             try { setDashboard(await api('/dashboard')); }
             catch (error) { setDashboard(null); showToast(`Dashboard metrics unavailable: ${error.message}`); }
+            try { setContractors((await api('/contractors')).contractors || []); } catch (_) { setContractors([]); }
           } else {
             setDashboard(null);
           }
+          if (knownUser?.role === 'contractor') {
+            try { const work = await api('/offers'); setContractorJobs(work.offers || []); setContractorProfile(work.contractor || null); }
+            catch (error) { setContractorJobs([]); showToast(`Contractor work unavailable: ${error.message}`); }
+          } else { setContractorJobs([]); setContractorProfile(null); }
           if (knownUser) {
             try { setRepairRequests((await api('/repair-requests')).requests || []); }
             catch (error) { setRepairRequests([]); showToast(`Repair records unavailable: ${error.message}`); }
@@ -380,6 +389,37 @@
           await refreshData(user); showToast(`Welcome, ${user.name}.`);
         } catch (error) { setAuthError(error.message); showToast(error.message); }
         finally { setAuthBusy(false); }
+      };
+
+      const authenticateContractor = async () => {
+        if (authMode === 'register' && authForm.password !== authForm.confirmPassword) return setAuthError('Passwords do not match.');
+        setAuthBusy(true); setAuthError(''); authVersionRef.current += 1;
+        try {
+          const registering = authMode === 'register';
+          const payload = registering ? {name:authForm.name.trim(),email:authForm.email.trim(),password:authForm.password,phone:authForm.phone.trim(),account_type:'contractor',service_area:contractorForm.service_area.trim(),skills:contractorForm.skills.split(',').map(v=>v.trim()).filter(Boolean)} : {email:authForm.email.trim(),password:authForm.password};
+          const user = await api(registering ? '/auth/register' : '/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+          if (user.role !== 'contractor') throw new Error('Use a registered contractor account.');
+          window.CIVICPULSE_CSRF=user.csrf_token; setAuthUser(user); await refreshData(user); showToast(`Welcome, ${user.name}.`);
+        } catch(error) { setAuthError(error.message); showToast(error.message); }
+        finally { setAuthBusy(false); }
+      };
+
+      const updateContractorJob = async (offer, status) => {
+        try { await api(`/offers/${offer.offer_id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}); await refreshData(authUser); showToast(`Work order ${status.toLowerCase()}.`); }
+        catch(error) { showToast(error.message); }
+      };
+
+      const approveContractor = async (contractor, approved) => {
+        try { await api(`/contractors/${contractor.contractor_id}/approval`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({approved})}); await refreshData(authUser); showToast(`Contractor ${approved?'approved':'rejected'}.`); }
+        catch(error) { showToast(error.message); }
+      };
+
+      const rateContractor = async (report, score) => {
+        const authority = authUser?.role === 'admin';
+        const token = sessionStorage.getItem(`civicpulse-reporter-${report.id}`);
+        if (!authority && !token) return showToast('Only the original reporter or authority can rate this work.');
+        try { const updated=await api(`/complaints/${report.id}/${authority?'authority':'reporter'}-contractor-rating`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score,token})}); setSelectedReport(normalizeReport(updated)); await refreshData(authUser); showToast(`${score}-star rating recorded.`); }
+        catch(error) { showToast(error.message); }
       };
 
       const logout = async () => {
@@ -700,8 +740,7 @@
                   { id: 'track', label: 'Track Report' },
                   { id: 'map', label: 'Civic Map' },
                   { id: 'community', label: 'Community Work' },
-                  { id: 'admin', label: 'Command Center' },
-                  { id: 'whatsapp', label: 'WhatsApp Intake' }
+                  { id: 'contractor', label: 'Contractor Portal' }
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -740,7 +779,7 @@
           <nav aria-label="Mobile navigation" className="mobile-nav md:hidden fixed bottom-0 inset-x-0 z-50 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 px-1 pt-2 grid grid-cols-6 shadow-[0_-12px_30px_rgba(2,8,23,.35)]">
             {[
               ['landing','home','Home'], ['report','camera','Report'], ['track','search','Track'],
-              ['map','map','Map'], ['community','hand-coins','Community'], ['admin','layout-dashboard','Admin']
+              ['map','map','Map'], ['contractor','hard-hat','Contractor'], ['admin','landmark','Authority']
             ].map(([id, icon, label]) => <button key={id} aria-current={activeTab === id ? 'page' : undefined} onClick={() => setActiveTab(id)} className={`min-w-0 min-h-12 rounded-lg flex flex-col items-center justify-center gap-1 py-1 text-[9px] font-semibold transition-colors ${activeTab === id ? 'text-sky-400 bg-sky-500/10' : 'text-slate-500'}`}><Icon name={icon} className="w-4 h-4"/><span className="truncate w-full text-center">{label}</span></button>)}
           </nav>
 
@@ -1104,6 +1143,8 @@
 
                     {selectedReport.afterImage && sessionStorage.getItem(`civicpulse-reporter-${selectedReport.id}`) && <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-3"><div className="text-xs font-semibold text-white">Reporter verification</div><p className="text-[11px] text-slate-400 mt-1">Only your private browser token can record this decision.</p><div className="grid grid-cols-3 gap-2 mt-3"><button onClick={()=>verifyAsReporter(selectedReport,'not_fixed')} className="rounded-lg border border-red-500/30 px-2 py-2 text-xs text-red-300">Not fixed</button><button onClick={()=>verifyAsReporter(selectedReport,'partially_fixed')} className="rounded-lg border border-amber-500/30 px-2 py-2 text-xs text-amber-300">Partial</button><button onClick={()=>verifyAsReporter(selectedReport,'fixed')} className="rounded-lg bg-emerald-500 px-2 py-2 text-xs font-semibold text-slate-950">Fixed</button></div></div>}
 
+                    {selectedReport.afterImage && selectedReport.assigned_contractor_id && (authUser?.role==='admin' || sessionStorage.getItem(`civicpulse-reporter-${selectedReport.id}`)) && <div className="rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="text-xs font-semibold text-white">Rate contractor work</div><div className="flex gap-2 mt-2">{[1,2,3,4,5].map(score=><button key={score} onClick={()=>rateContractor(selectedReport,score)} className="text-xl text-amber-400 hover:scale-110" aria-label={`${score} stars`}>★</button>)}</div></div>}
+
                     {selectedReport.afterImage ? (
                       <div className="relative h-72 w-full rounded-xl overflow-hidden select-none border border-slate-800">
                         <img src={selectedReport.afterImage} alt="After resolution" className="absolute inset-0 w-full h-full object-cover" />
@@ -1206,6 +1247,11 @@
               </div>
             )}
 
+            {activeTab === 'contractor' && (
+              authUser?.role !== 'contractor' ? <div className="max-w-md mx-auto px-4 py-12 space-y-4"><div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1"><button onClick={()=>setAuthMode('login')} className={`flex-1 py-2 rounded-lg text-xs ${authMode==='login'?'bg-sky-500 text-slate-950':'text-slate-400'}`}>Login</button><button onClick={()=>setAuthMode('register')} className={`flex-1 py-2 rounded-lg text-xs ${authMode==='register'?'bg-sky-500 text-slate-950':'text-slate-400'}`}>Register</button></div><div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-3"><h1 className="text-xl font-bold text-white">Contractor Portal</h1>{authMode==='register'&&<input value={authForm.name} onChange={e=>setAuthForm({...authForm,name:e.target.value})} placeholder="Business or contractor name" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-white"/>}<input type="email" value={authForm.email} onChange={e=>setAuthForm({...authForm,email:e.target.value})} placeholder="Email" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-white"/>{authMode==='register'&&<><input value={authForm.phone} onChange={e=>setAuthForm({...authForm,phone:e.target.value})} placeholder="Phone" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-white"/><input value={contractorForm.service_area} onChange={e=>setContractorForm({...contractorForm,service_area:e.target.value})} placeholder="Service area" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-white"/><input value={contractorForm.skills} onChange={e=>setContractorForm({...contractorForm,skills:e.target.value})} placeholder="Skills, comma separated" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-white"/></>}<input type="password" value={authForm.password} onChange={e=>setAuthForm({...authForm,password:e.target.value})} placeholder="Password" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-white"/>{authMode==='register'&&<input type="password" value={authForm.confirmPassword} onChange={e=>setAuthForm({...authForm,confirmPassword:e.target.value})} placeholder="Confirm password" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-white"/>}{authError&&<div className="text-xs text-red-400">{authError}</div>}<button onClick={authenticateContractor} disabled={authBusy} className="w-full py-3 rounded-xl bg-sky-500 disabled:opacity-40 text-slate-950 font-semibold">{authBusy?'Please wait…':authMode==='register'?'Submit registration':'Contractor login'}</button></div>{authUser&&<button onClick={logout} className="block mx-auto text-xs text-slate-400 underline">Log out first</button>}</div> :
+              <div className="max-w-5xl mx-auto px-4 py-10 space-y-6"><div className="flex justify-between gap-4"><div><div className="text-xs font-mono text-sky-400">CONTRACTOR PORTAL</div><h1 className="text-2xl font-bold text-white mt-1">Assigned work</h1><p className="text-xs text-slate-400 mt-1">{contractorProfile?.approval_status || 'Account pending'} · Rating {contractorProfile?.rating || 'Not rated'}</p></div><button onClick={logout} className="text-xs text-slate-400 underline">Log out</button></div>{contractorProfile?.verified!==true&&<div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-300">Registration received. Authority approval is required before work can be assigned.</div>}<div className="space-y-3">{contractorJobs.map(job=><div key={job.offer_id} className="bg-slate-900 border border-slate-800 rounded-xl p-5"><div className="flex justify-between gap-3"><div><div className="text-xs font-mono text-sky-400">{job.offer_id} · {job.complaint_id}</div><h2 className="text-base font-semibold text-white mt-1">{job.issue_title}</h2><p className="text-xs text-slate-400 mt-1">{job.work_location_area} · PKR {Number(job.budget_cap).toLocaleString()} · {job.sla_hours}h SLA</p></div><span className="text-xs text-amber-400">{job.status}</span></div><div className="flex gap-2 mt-4">{job.status==='Sent'&&<><button onClick={()=>updateContractorJob(job,'Rejected')} className="px-3 py-2 rounded-lg border border-red-500/30 text-red-400 text-xs">Reject</button><button onClick={()=>updateContractorJob(job,'Accepted')} className="px-3 py-2 rounded-lg bg-emerald-500 text-slate-950 text-xs font-semibold">Accept</button></>}{job.status==='Accepted'&&<button onClick={()=>updateContractorJob(job,'In Progress')} className="px-3 py-2 rounded-lg bg-sky-500 text-slate-950 text-xs font-semibold">Start work</button>}</div></div>)}{!contractorJobs.length&&<div className="bg-slate-900 border border-slate-800 rounded-xl p-10 text-center text-sm text-slate-400">No work has been assigned yet.</div>}</div></div>
+            )}
+
             {activeTab === 'admin' && (
               authUser?.role !== 'admin' ? <div className="max-w-4xl mx-auto px-4 py-10 space-y-5"><AuthCard title="Administrator access" subtitle="This private command center contains funding decisions and operational controls." mode="login" setMode={()=>{}} form={authForm} setForm={setAuthForm} submit={()=>authenticate('login')} busy={authBusy} error={authError} allowRegister={false} />{authUser && <button onClick={logout} className="block mx-auto text-xs text-slate-400 underline">Log out of {authUser.email} first</button>}</div> :
               <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
@@ -1217,7 +1263,7 @@
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                    <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1 overflow-x-auto">{[['queue','list-filter','Work queue'],['map','map','Map'],['funding','hand-coins','Youth funding']].map(([id,icon,label])=><button key={id} onClick={()=>setAdminView(id)} className={`whitespace-nowrap px-3 py-2 rounded-lg text-xs flex items-center gap-1.5 ${adminView===id?'bg-sky-500 text-slate-950':'text-slate-400'}`}><Icon name={icon} className="w-3.5 h-3.5"/>{label}</button>)}</div>
+                    <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1 overflow-x-auto">{[['queue','list-filter','Work queue'],['map','map','Map'],['contractors','hard-hat','Contractors'],['whatsapp','message-circle','WhatsApp'],['funding','hand-coins','Youth funding']].map(([id,icon,label])=><button key={id} onClick={()=>setAdminView(id)} className={`whitespace-nowrap px-3 py-2 rounded-lg text-xs flex items-center gap-1.5 ${adminView===id?'bg-sky-500 text-slate-950':'text-slate-400'}`}><Icon name={icon} className="w-3.5 h-3.5"/>{label}</button>)}</div>
                   </div>
                 </div>
 
@@ -1246,6 +1292,10 @@
                 {['queue','map'].includes(adminView) && <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-semibold text-white">Narrow the work</h2><p className="text-[11px] text-slate-500">Filters combine together. Showing {filteredAdminReports.length} of {reports.length} incidents.</p></div><button onClick={resetQueueFilters} className="text-xs text-sky-400 hover:text-sky-300">Reset filters</button></div><div className="grid sm:grid-cols-2 lg:grid-cols-6 gap-2"><input type="search" aria-label="Search incidents" placeholder="ID, area, category…" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} className="lg:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"/><select aria-label="Reported within" value={queueFilters.days} onChange={e=>setQueueFilters({...queueFilters,days:e.target.value})} className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-xs text-white"><option value="all">Any age</option><option value="1">Last 24 hours</option><option value="7">Last 7 days</option><option value="15">Last 15 days</option><option value="30">Last 30 days</option></select><select aria-label="Work state" value={queueFilters.state} onChange={e=>setQueueFilters({...queueFilters,state:e.target.value})} className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-xs text-white"><option value="all">Every status</option><option value="needs_action">Needs action</option><option value="assigned">Assigned work</option><option value="unresolved">All unresolved</option><option value="resolved">Resolved</option></select><select aria-label="Category" value={queueFilters.category} onChange={e=>setQueueFilters({...queueFilters,category:e.target.value})} className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-xs text-white"><option value="all">Every category</option>{reportCategories.map(category=><option key={category} value={category}>{category}</option>)}</select><select aria-label="Severity" value={queueFilters.severity} onChange={e=>setQueueFilters({...queueFilters,severity:e.target.value})} className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-xs text-white"><option value="all">Every severity</option>{['Critical','High','Medium','Low'].map(level=><option key={level}>{level}</option>)}</select></div><div className="flex flex-wrap gap-2"><span className="text-[10px] text-slate-500 py-1">Sort:</span>{[['priority','Highest priority'],['oldest','Oldest first'],['newest','Newest first']].map(([value,label])=><button key={value} onClick={()=>setQueueFilters({...queueFilters,sort:value})} className={`px-2.5 py-1 rounded-full border text-[10px] ${queueFilters.sort===value?'border-sky-500/40 bg-sky-500/10 text-sky-400':'border-slate-800 text-slate-500'}`}>{label}</button>)}</div></div>}
 
                 {adminView === 'map' && <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="flex justify-between items-center mb-4"><div><h2 className="text-sm font-semibold text-white">Filtered incident map</h2><p className="text-xs text-slate-400">The map follows the filters above.</p></div><div className="text-xs font-mono text-slate-400">{filteredAdminReports.filter(r=>Number.isFinite(r.coordinates?.lat)).length} mapped</div></div><AuthorityMap reports={filteredAdminReports} onSelect={report=>{setSelectedReport(report);showToast(`${report.id}: ${report.status}`)}} /></div>}
+
+                {adminView === 'whatsapp' && <div className="space-y-4"><div className="grid sm:grid-cols-3 gap-3">{[['Total intake',reports.filter(r=>r.channel==='WhatsApp').length],['Open',reports.filter(r=>r.channel==='WhatsApp'&&r.status!=='Resolved').length],['Resolved',reports.filter(r=>r.channel==='WhatsApp'&&r.status==='Resolved').length]].map(([label,value])=><div key={label} className="bg-slate-900 border border-slate-800 rounded-xl p-5"><div className="text-xs text-slate-400 font-mono">{label}</div><div className="text-3xl font-bold text-white mt-1">{value}</div></div>)}</div><div className="bg-slate-900 border border-slate-800 rounded-xl divide-y divide-slate-800">{reports.filter(r=>r.channel==='WhatsApp').map(report=><button key={report.id} onClick={()=>inspectIncident(report)} className="w-full p-4 text-left hover:bg-slate-800/40"><span className="text-xs font-mono text-sky-400">{report.id}</span><span className="ml-3 text-sm text-white">{report.title}</span></button>)}{!reports.some(r=>r.channel==='WhatsApp')&&<div className="p-8 text-center text-sm text-slate-400">No WhatsApp reports received.</div>}</div></div>}
+
+                {adminView === 'contractors' && <div className="space-y-3">{contractors.map(contractor=><div key={contractor.contractor_id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div><div className="text-xs font-mono text-sky-400">{contractor.contractor_id}</div><div className="text-base font-semibold text-white mt-1">{contractor.name}</div><div className="text-xs text-slate-400">{contractor.service_area} · {(contractor.skills||[]).join(', ')||'Skills pending'} · {contractor.approval_status|| (contractor.verified?'Approved':'Pending Approval')}</div></div>{!contractor.verified&&<div className="flex gap-2"><button onClick={()=>approveContractor(contractor,false)} className="px-3 py-2 rounded-lg border border-red-500/30 text-red-400 text-xs">Reject</button><button onClick={()=>approveContractor(contractor,true)} className="px-3 py-2 rounded-lg bg-emerald-500 text-slate-950 text-xs font-semibold">Approve</button></div>}</div>)}{!contractors.length&&<div className="p-10 text-center text-sm text-slate-400">No contractor registrations.</div>}</div>}
 
                 {adminView === 'funding' && <div className="space-y-4"><div className="bg-slate-900 border border-slate-800 rounded-2xl p-5"><h2 className="text-sm font-semibold text-white">Community repair funding</h2><p className="text-xs text-slate-400 mt-1">Review the proposed method and estimate, set the approved escrow amount, require the youth worker's after photo, and release funds only after verification.</p></div>{repairRequests.length ? repairRequests.map(req=><div key={req.request_id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 grid lg:grid-cols-[1fr_280px] gap-5"><div><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-mono text-sky-400">{req.request_id}</span><span className="text-xs font-mono text-slate-500">Problem {req.complaint_id}</span><span className="px-2 py-1 rounded bg-slate-950 text-[10px] font-mono text-amber-400">{req.status}</span></div><div className="text-base font-semibold text-white mt-3">{req.applicant_name} · PKR {Number(req.estimated_price).toLocaleString()}</div><div className="text-xs text-slate-400 mt-1">Contact: {req.applicant_contact} · ETA {req.estimated_hours} hours</div><div className="mt-4 p-3 rounded-lg bg-slate-950 border border-slate-800"><div className="text-[10px] font-mono text-slate-500 mb-1">WORK PLAN</div><p className="text-sm text-slate-300">{req.plan}</p></div>{req.proof && <div className="mt-4 flex items-center gap-3"><img src={absoluteMediaUrl(req.proof.after_image_url)} className="w-24 h-20 object-cover rounded-lg border border-slate-700" alt="Completion proof"/><div><div className="text-xs text-emerald-400">Youth after-photo received</div><div className="text-xs text-slate-400 mt-1">{req.proof.completion_note}</div></div></div>}</div><div className="space-y-3"><div className="rounded-xl bg-slate-950 border border-slate-800 p-3"><div className="text-[10px] font-mono text-slate-500">FUNDS</div><div className="text-sm text-white mt-1">{req.funds_status}</div>{req.approved_budget && <div className="text-lg font-bold text-emerald-400 mt-1">PKR {Number(req.approved_budget).toLocaleString()}</div>}</div>{req.status === 'Pending Admin Review' && <><label className="block text-xs text-slate-400">Approved escrow amount<input type="number" value={fundingBudgets[req.request_id] ?? req.estimated_price} onChange={e=>setFundingBudgets({...fundingBudgets,[req.request_id]:e.target.value})} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white" /></label><div className="grid grid-cols-2 gap-2"><button onClick={()=>decideRepair(req,false)} className="px-3 py-2 rounded-lg border border-red-500/30 text-red-400 text-xs">Reject</button><button onClick={()=>decideRepair(req,true)} className="px-3 py-2 rounded-lg bg-sky-500 text-slate-950 text-xs font-semibold">Reserve budget</button></div></>}{req.status === 'Approved - Awaiting Work' && <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-300">Waiting for the assigned youth account to upload the required after-repair photo.</div>}{req.status === 'Proof Submitted - Awaiting Verification' && <button onClick={()=>releaseFunds(req)} className="w-full px-3 py-2 rounded-lg bg-emerald-500 text-slate-950 text-xs font-semibold">Verify after photo & release funds</button>}</div></div>) : <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center text-sm text-slate-400">No community funding requests are waiting.</div>}</div>}
 
@@ -1315,14 +1365,6 @@
               </div>
             )}
 
-            {/* 6. WHATSAPP INTAKE SUMMARY */}
-            {activeTab === 'whatsapp' && (
-              <div className="max-w-5xl mx-auto px-4 py-12 space-y-6">
-                <div><div className="text-xs font-mono text-emerald-400">WHATSAPP INTAKE</div><h1 className="text-2xl font-bold text-white mt-1">{reports.filter(r => r.channel === 'WhatsApp').length} reports received</h1><p className="text-sm text-slate-400 mt-2">WhatsApp submissions enter the same complaint pipeline and authority queue as portal reports.</p></div>
-                <div className="grid sm:grid-cols-3 gap-4">{[['Total intake', reports.filter(r=>r.channel==='WhatsApp').length], ['Open', reports.filter(r=>r.channel==='WhatsApp' && r.status!=='Resolved').length], ['Resolved', reports.filter(r=>r.channel==='WhatsApp' && r.status==='Resolved').length]].map(([label,value])=><div key={label} className="bg-slate-900 border border-slate-800 rounded-xl p-5"><div className="text-xs text-slate-400 font-mono">{label}</div><div className="text-3xl font-bold text-white mt-1">{value}</div></div>)}</div>
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl divide-y divide-slate-800">{reports.filter(r=>r.channel==='WhatsApp').length ? reports.filter(r=>r.channel==='WhatsApp').map(report=><button key={report.id} onClick={()=>{setSelectedReport(report);setActiveTab('track')}} className="w-full p-4 flex items-center justify-between gap-4 text-left hover:bg-slate-800/40"><div><div className="text-xs font-mono text-sky-400">{report.id}</div><div className="text-sm font-semibold text-white mt-1">{report.title}</div><div className="text-xs text-slate-400 mt-1">{report.location}</div></div><span className="text-xs text-slate-300">{report.status}</span></button>) : <div className="p-8 text-center text-sm text-slate-400">No WhatsApp reports have been received yet.</div>}</div>
-              </div>
-            )}
           </main>
 
           {/* FOOTER */}

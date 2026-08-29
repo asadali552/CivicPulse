@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.core.security import require_admin
+from app.core.security import require_admin, require_user
 
 from app.db.repository import civic_repo, now_utc, public_id
 from app.schemas.offer import OfferCreate, OfferStatusUpdate
@@ -9,8 +9,14 @@ router = APIRouter(prefix="/api/offers", tags=["offers"])
 
 
 @router.get("")
-async def list_offers(_admin: dict = Depends(require_admin)):
-    return {"offers": await civic_repo.list_all("offers")}
+async def list_offers(user: dict = Depends(require_user)):
+    offers = await civic_repo.list_all("offers")
+    if user.get("role") == "admin":
+        return {"offers": offers}
+    if user.get("role") == "contractor":
+        contractor = next((item for item in await civic_repo.list_all("contractors") if item.get("user_id") == user["user_id"]), None)
+        return {"offers": [item for item in offers if contractor and item.get("contractor_id") == contractor.get("contractor_id")], "contractor": contractor}
+    raise HTTPException(status_code=403, detail="Contractor or authority access required")
 
 
 @router.post("")
@@ -74,10 +80,18 @@ async def create_offer(payload: OfferCreate, _admin: dict = Depends(require_admi
 
 
 @router.patch("/{offer_id}/status")
-async def update_offer_status(offer_id: str, payload: OfferStatusUpdate, _admin: dict = Depends(require_admin)):
+async def update_offer_status(offer_id: str, payload: OfferStatusUpdate, user: dict = Depends(require_user)):
     offer = await civic_repo.find_one("offers", "offer_id", offer_id)
     if not offer:
         raise HTTPException(status_code=404, detail="Offer not found")
+    if user.get("role") == "contractor":
+        contractor = next((item for item in await civic_repo.list_all("contractors") if item.get("user_id") == user["user_id"]), None)
+        if not contractor or offer.get("contractor_id") != contractor.get("contractor_id"):
+            raise HTTPException(status_code=403, detail="This work order is not assigned to your account")
+        if payload.status not in {"Accepted", "Rejected", "In Progress", "Proof Submitted"}:
+            raise HTTPException(status_code=403, detail="Authority approval is required")
+    elif user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Contractor or authority access required")
     allowed = {
         "Sent": {"Accepted", "Rejected"},
         "Accepted": {"In Progress", "Rejected"},
@@ -103,5 +117,5 @@ async def update_offer_status(offer_id: str, payload: OfferStatusUpdate, _admin:
             "assigned_contractor_name": offer.get("contractor_name") if payload.status != "Rejected" else None,
             "status_history": history,
         })
-    await record_audit_event("offer", offer_id, "status_transition", _admin, {"status": offer.get("status")}, {"status": payload.status}, payload.note)
+    await record_audit_event("offer", offer_id, "status_transition", user, {"status": offer.get("status")}, {"status": payload.status}, payload.note)
     return updated
