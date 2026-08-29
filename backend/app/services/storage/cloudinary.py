@@ -30,6 +30,7 @@ async def store_upload(file: UploadFile | None) -> str | None:
     upload_limit_mb = min(settings.max_upload_mb, 4) if settings.environment == "production" else settings.max_upload_mb
     if len(content) > upload_limit_mb * 1024 * 1024:
         raise HTTPException(status_code=413, detail=f"Image exceeds the {upload_limit_mb} MB upload limit")
+    output_content_type = file.content_type
     signatures = IMAGE_SIGNATURES[file.content_type]
     valid_signature = any(content.startswith(signature) for signature in signatures)
     if file.content_type == "image/webp":
@@ -57,7 +58,7 @@ async def store_upload(file: UploadFile | None) -> str | None:
                 # Animated GIF evidence is intentionally flattened to a safe
                 # still JPEG; evidence workflows only require one clear frame.
                 image.convert("RGB").save(output, format="JPEG", quality=90, optimize=True)
-                file.content_type = "image/jpeg"
+                output_content_type = "image/jpeg"
             content = output.getvalue()
     except HTTPException:
         raise
@@ -97,7 +98,7 @@ async def store_upload(file: UploadFile | None) -> str | None:
 
     upload_root = upload_directory()
     upload_root.mkdir(parents=True, exist_ok=True)
-    suffix = SAFE_SUFFIX[file.content_type]
+    suffix = SAFE_SUFFIX[output_content_type]
     file_name = f"{uuid4().hex}{suffix}"
     destination = upload_root / file_name
     destination.write_bytes(content)
