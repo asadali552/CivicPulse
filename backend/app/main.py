@@ -86,7 +86,14 @@ app.include_router(discussions.router)
 app.include_router(whatsapp.router)
 if LOCAL_UPLOADS_ENABLED:
     app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-app.mount("/assets", StaticFiles(directory=STATIC_ASSET_DIR), name="assets")
+from fastapi.staticfiles import StaticFiles
+
+if STATIC_ASSET_DIR.exists():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=STATIC_ASSET_DIR),
+        name="assets"
+    )
 
 
 @app.get("/api", include_in_schema=False)
