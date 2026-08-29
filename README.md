@@ -104,6 +104,8 @@ After deploying, set `PUBLIC_BASE_URL` to the production URL, such as `https://c
 
 Production uploads are Cloudinary-only because Vercel Functions do not provide persistent local storage. The application refuses unsafe production settings during startup instead of silently losing data.
 
+Cloudinary's combined `CLOUDINARY_URL=cloudinary://...` environment variable can be used instead of the three separate `CLOUDINARY_*` credential variables. Never configure both forms with different accounts.
+
 Verify the deployment:
 
 ```bash

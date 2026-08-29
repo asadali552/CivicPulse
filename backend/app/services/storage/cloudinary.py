@@ -27,8 +27,9 @@ async def store_upload(file: UploadFile | None) -> str | None:
     if file.content_type not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
         raise HTTPException(status_code=415, detail="Only JPEG, PNG, WebP, and GIF images are supported")
     content = await file.read()
-    if len(content) > settings.max_upload_mb * 1024 * 1024:
-        raise HTTPException(status_code=413, detail=f"Image exceeds the {settings.max_upload_mb} MB upload limit")
+    upload_limit_mb = min(settings.max_upload_mb, 4) if settings.environment == "production" else settings.max_upload_mb
+    if len(content) > upload_limit_mb * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"Image exceeds the {upload_limit_mb} MB upload limit")
     signatures = IMAGE_SIGNATURES[file.content_type]
     valid_signature = any(content.startswith(signature) for signature in signatures)
     if file.content_type == "image/webp":
@@ -63,16 +64,18 @@ async def store_upload(file: UploadFile | None) -> str | None:
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
         raise HTTPException(status_code=415, detail="Image is corrupt or unsafe to process") from exc
 
-    if settings.cloudinary_cloud_name and settings.cloudinary_api_key and settings.cloudinary_api_secret:
+    cloudinary_parts = all((settings.cloudinary_cloud_name, settings.cloudinary_api_key, settings.cloudinary_api_secret))
+    if settings.cloudinary_url or cloudinary_parts:
         import cloudinary
         import cloudinary.uploader
 
-        cloudinary.config(
-            cloud_name=settings.cloudinary_cloud_name,
-            api_key=settings.cloudinary_api_key,
-            api_secret=settings.cloudinary_api_secret,
-            secure=True,
-        )
+        if cloudinary_parts:
+            cloudinary.config(
+                cloud_name=settings.cloudinary_cloud_name,
+                api_key=settings.cloudinary_api_key,
+                api_secret=settings.cloudinary_api_secret,
+                secure=True,
+            )
         try:
             result = await asyncio.wait_for(asyncio.to_thread(
                 cloudinary.uploader.upload,

@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     cloudinary_cloud_name: str = ""
     cloudinary_api_key: str = ""
     cloudinary_api_secret: str = ""
+    cloudinary_url: str = ""
     upload_dir: str = ""
     max_upload_mb: int = 10
     max_image_megapixels: int = 30
@@ -59,14 +60,11 @@ class Settings(BaseSettings):
                 unsafe.append("ADMIN_PASSWORD (minimum 12 characters)")
             if self.reporter_token_secret == "development-reporter-secret" or len(self.reporter_token_secret) < 32:
                 unsafe.append("REPORTER_TOKEN_SECRET (minimum 32 characters)")
-            if self.allow_memory_fallback:
-                unsafe.append("ALLOW_MEMORY_FALLBACK=false")
             if self.mongo_uri in {"", "mongodb://localhost:27017"}:
                 unsafe.append("MONGO_URI")
-            if not all((self.cloudinary_cloud_name, self.cloudinary_api_key, self.cloudinary_api_secret)):
-                unsafe.append("Cloudinary credentials")
-            if self.max_upload_mb > 4:
-                unsafe.append("MAX_UPLOAD_MB=4 (Vercel request limit)")
+            cloudinary_parts = all((self.cloudinary_cloud_name, self.cloudinary_api_key, self.cloudinary_api_secret))
+            if not self.cloudinary_url and not cloudinary_parts:
+                unsafe.append("CLOUDINARY_URL or separate Cloudinary credentials")
             if unsafe:
                 raise ValueError("Unsafe production configuration: " + ", ".join(unsafe))
         return self

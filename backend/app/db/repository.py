@@ -54,10 +54,11 @@ class CivicRepository:
         }
 
     async def connect(self) -> None:
+        allow_memory_fallback = settings.allow_memory_fallback and settings.environment != "production"
         if AsyncIOMotorClient is None:
             self.connection_error = "MongoDB driver is unavailable"
             self.use_memory = True
-            if not settings.allow_memory_fallback:
+            if not allow_memory_fallback:
                 raise RuntimeError(self.connection_error)
             return
         try:
@@ -94,7 +95,7 @@ class CivicRepository:
             self.db = None
             self.use_memory = True
             self.connection_error = f"{type(exc).__name__}: {exc}"
-            if not settings.allow_memory_fallback:
+            if not allow_memory_fallback:
                 logger.error("MongoDB unavailable and fallback is disabled: %s", self.connection_error)
                 raise RuntimeError(
                     "MongoDB connection failed. Check Atlas network access and DNS resolution, "
