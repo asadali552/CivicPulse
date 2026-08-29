@@ -19,7 +19,6 @@ class OfferCreate(BaseModel):
 class OfferStatusUpdate(BaseModel):
     status: str = Field(..., pattern="^(Accepted|In Progress|Proof Submitted|Approved|Rejected)$", examples=["Accepted", "In Progress", "Proof Submitted", "Approved"])
     note: Optional[str] = Field(default=None, max_length=1000)
-    after_image_url: Optional[str] = Field(default=None, max_length=2048)
 
 
 class Offer(BaseModel):

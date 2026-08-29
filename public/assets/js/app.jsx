@@ -304,7 +304,6 @@
     // --- MAIN APP COMPONENT ---
     function App() {
       const [activeTab, setActiveTab] = useState('landing');
-      const [darkMode, setDarkMode] = useState(() => localStorage.getItem('civicpulse-theme') !== 'light');
       const [reports, setReports] = useState(INITIAL_REPORTS);
       const [selectedReport, setSelectedReport] = useState(INITIAL_REPORTS[0]);
       
@@ -368,12 +367,6 @@
       useEffect(() => { authUserRef.current = authUser; }, [authUser]);
 
       useEffect(() => () => { if (uploadedImage?.startsWith('blob:')) URL.revokeObjectURL(uploadedImage); }, [uploadedImage]);
-
-      useEffect(() => {
-        document.documentElement.classList.toggle('dark', darkMode);
-        localStorage.setItem('civicpulse-theme', darkMode ? 'dark' : 'light');
-        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', darkMode ? '#0B0F17' : '#f4f7fb');
-      }, [darkMode]);
 
       useEffect(() => {
         loadSession();
@@ -463,8 +456,16 @@
 
       const updateContractorJob = async (offer, status) => {
         const proof = contractorProofs[offer.offer_id] || {};
-        if (status === 'Proof Submitted' && (!proof.after_image_url?.trim() || !proof.note?.trim())) return showToast('Add a completion photo link and work summary first.');
-        try { await api(`/offers/${offer.offer_id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,...(status === 'Proof Submitted' ? proof : {})})}); await refreshData(authUser); showToast(status === 'Proof Submitted' ? 'Work submitted for authority verification.' : `Work order ${status.toLowerCase()}.`); }
+        if (status === 'Proof Submitted' && (!proof.image || !proof.report_url?.trim() || !proof.note?.trim())) return showToast('Add a completion photo, report link, and short summary.');
+        try {
+          if (status === 'Proof Submitted') {
+            const data = new FormData(); data.append('image', proof.image); data.append('report_url', proof.report_url.trim()); data.append('note', proof.note.trim());
+            await api(`/offers/${offer.offer_id}/proof`, {method:'POST', body:data});
+          } else {
+            await api(`/offers/${offer.offer_id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+          }
+          await refreshData(authUser); showToast(status === 'Proof Submitted' ? 'Work submitted for authority verification.' : `Work order ${status.toLowerCase()}.`);
+        }
         catch(error) { showToast(error.message); }
       };
 
@@ -787,26 +788,18 @@
       return (
         <div className="min-h-screen flex flex-col bg-[#0B0F17] transition-colors duration-200">
           {/* HEADER / NAVIGATION */}
-          <header className="sticky top-0 z-50 backdrop-blur-xl bg-[#070A11]/85 border-b border-slate-800/80 shadow-lg shadow-black/20">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-3">
-              <button aria-label="CivicPulse home" className="flex items-center space-x-3 text-left group rounded-xl focus:outline-none" onClick={() => setActiveTab('landing')}>
-                <div className="relative w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 via-sky-400 to-blue-600 flex items-center justify-center shadow-lg shadow-sky-500/30 group-hover:shadow-sky-400/50 group-hover:scale-105 transition-all">
+          <header className="sticky top-0 z-50 bg-[#070A11] border-b border-slate-800/80">
+            <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+              <button aria-label="CivicPulse home" className="flex shrink-0 items-center gap-2.5 text-left rounded-xl focus:outline-none" onClick={() => setActiveTab('landing')}>
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center">
                   <Icon name="activity" className="w-5 h-5 text-slate-950 stroke-[2.5]" />
-                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-[#070A11]"></span>
-                  </span>
                 </div>
-                <div>
-                  <div className="font-extrabold text-xl tracking-tight text-white flex items-center gap-1.5 font-sans">
+                <div className="font-extrabold text-lg tracking-tight text-white flex items-center font-sans whitespace-nowrap">
                     CIVIC<span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-cyan-300">PULSE</span>
-                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 tracking-wider">AI PILOT</span>
-                  </div>
-                  <div className="text-[10px] text-slate-400 font-mono hidden sm:block">Public Municipal Intelligence</div>
                 </div>
               </button>
 
-              <nav className="hidden lg:flex items-center space-x-1.5 p-1 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-md">
+              <nav className="hidden lg:flex min-w-0 items-center gap-1 p-1 rounded-xl bg-slate-900/50 border border-slate-800/80">
                 {[
                   { id: 'landing', label: 'Platform', icon: 'sparkles' },
                   { id: 'report', label: 'Report Issue', icon: 'camera' },
@@ -821,7 +814,7 @@
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
                       aria-current={isActive ? 'page' : undefined}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 ${
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
                         isActive 
                           ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-slate-950 shadow-md shadow-sky-500/20 font-bold' 
                           : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
@@ -834,26 +827,10 @@
                 })}
               </nav>
 
-              <div className="flex items-center space-x-2.5">
-                <span className={`hidden sm:inline-flex text-[10px] font-mono items-center gap-1.5 px-2.5 py-1 rounded-full border ${
-                  apiOnline 
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
-                    : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${apiOnline ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                  {apiOnline ? (reports.some(report=>report.data_label === 'Demo') ? 'DEMO NODE' : 'LIVE API') : 'OFFLINE'}
-                </span>
-                <button 
-                  onClick={() => setDarkMode(value => !value)} 
-                  aria-label={`Switch to ${darkMode ? 'light' : 'dark'} mode`} 
-                  title={`Switch to ${darkMode ? 'light' : 'dark'} mode`} 
-                  className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl border border-slate-700/80 bg-slate-900/80 text-slate-300 hover:text-sky-400 hover:border-sky-500/40 flex items-center justify-center transition-all shadow-sm"
-                >
-                  <Icon name={darkMode ? 'sun' : 'moon'} className="w-4 h-4" />
-                </button>
+              <div className="flex shrink-0 items-center">
                 <button 
                   onClick={() => setActiveTab('admin')}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 transition-all flex items-center gap-1.5 shadow-sm"
+                  className="px-3.5 py-2.5 rounded-lg text-xs font-semibold bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 transition-colors flex items-center gap-1.5"
                 >
                   <Icon name="shield-alert" className="w-3.5 h-3.5 text-sky-400" />
                   <span className="hidden sm:inline">Authority Portal</span>
@@ -909,15 +886,7 @@
                 <section aria-labelledby="hero-title" className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 sm:pt-20 pb-14 sm:pb-24">
                   <div className="grid lg:grid-cols-[1.12fr_.88fr] items-center gap-12 lg:gap-16">
                     <div className="reveal-up max-w-3xl">
-                      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-card border border-sky-500/30 text-[11px] sm:text-xs text-sky-400 font-mono shadow-sm">
-                        <span className="relative flex w-2 h-2">
-                          <span className="soft-pulse absolute inset-0 rounded-full bg-sky-400"/>
-                          <span className="relative w-2 h-2 rounded-full bg-sky-400"/>
-                        </span>
-                        Next-Gen AI Civic Intelligence & Verification
-                      </div>
-                      
-                      <h1 id="hero-title" className="mt-6 text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-[-0.04em] text-white leading-[1.05]">
+                      <h1 id="hero-title" className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-[-0.04em] text-white leading-[1.05]">
                         Report what is broken.<br />
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-cyan-300 to-blue-500">
                           Verify who fixes it.
@@ -931,7 +900,7 @@
                       <div className="mt-8 flex flex-col sm:flex-row gap-3.5">
                         <button 
                           onClick={() => { setReportStep(1); setActiveTab('report'); }} 
-                          className="group w-full sm:w-auto min-h-13 px-8 rounded-2xl font-bold bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-slate-950 transition-all shadow-xl shadow-sky-500/25 flex items-center justify-center gap-2.5 text-sm sm:text-base cursor-pointer"
+                          className="group w-full sm:w-auto h-12 px-7 rounded-xl font-bold bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-slate-950 transition-colors flex items-center justify-center gap-2.5 text-sm cursor-pointer"
                         >
                           <Icon name="camera" className="w-5 h-5 text-slate-950 stroke-[2.5]" />
                           <span>Report an Issue</span>
@@ -939,7 +908,7 @@
                         </button>
                         <button 
                           onClick={() => setActiveTab('track')} 
-                          className="w-full sm:w-auto min-h-13 px-8 rounded-2xl font-semibold glass-card border border-slate-700 hover:border-sky-500/50 text-slate-200 hover:text-white transition-all flex items-center justify-center gap-2 text-sm sm:text-base"
+                          className="w-full sm:w-auto h-12 px-7 rounded-xl font-semibold glass-card border border-slate-700 hover:border-sky-500/50 text-slate-200 hover:text-white transition-colors flex items-center justify-center gap-2 text-sm"
                         >
                           <Icon name="search" className="w-4 h-4 text-sky-400" />
                           <span>Track with Case ID</span>
@@ -1673,6 +1642,13 @@
                       </div>
                     )}
 
+                    {selectedReport.resolution_evidence?.report_url && (
+                      <a href={selectedReport.resolution_evidence.report_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-sky-300 hover:border-sky-500/50">
+                        <span className="flex items-center gap-2"><Icon name="file-text" className="w-4 h-4" />View contractor work report</span>
+                        <Icon name="external-link" className="w-4 h-4" />
+                      </a>
+                    )}
+
                     <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans glass-card p-4 rounded-2xl border border-slate-800">
                       {selectedReport.description}
                     </p>
@@ -1695,7 +1671,7 @@
                       className="w-full py-3 rounded-xl glass-card border border-slate-700 hover:border-sky-500/50 text-xs font-semibold text-sky-400 transition-all flex items-center justify-center gap-2 shadow-sm"
                     >
                       <Icon name="file-text" className="w-4 h-4 text-sky-400" />
-                      <span>Generate Cryptographic Public Accountability Receipt</span>
+                      <span>View accountability receipt</span>
                     </button>
                   </div>
                 </div>
@@ -1705,12 +1681,9 @@
                   <section aria-label="Public accountability receipt" className="rounded-3xl glass-panel border border-sky-500/40 p-6 sm:p-8 space-y-5 shadow-2xl reveal-up">
                     <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-800/80 pb-4">
                       <div>
-                        <div className="text-[10px] font-mono text-sky-400 font-bold tracking-widest uppercase">CRYPTOGRAPHIC EVIDENCE RECEIPT</div>
+                        <div className="text-[10px] font-mono text-sky-400 font-bold tracking-widest uppercase">ACCOUNTABILITY RECEIPT</div>
                         <h2 className="text-xl font-extrabold text-white mt-1">{accountabilityReceipt.incident_id || accountabilityReceipt.complaint_id}</h2>
                       </div>
-                      <span className="text-[10px] font-mono text-slate-400 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-lg break-all font-semibold">
-                        SHA-256: {accountabilityReceipt.receipt_hash}
-                      </span>
                     </div>
 
                     <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
@@ -2034,8 +2007,9 @@
                           )}
                           {job.status === 'In Progress' && (
                             <div className="w-full grid gap-2 sm:grid-cols-2">
-                              <input type="url" value={contractorProofs[job.offer_id]?.after_image_url || ''} onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),after_image_url:e.target.value}})} placeholder="Completion photo link" className="glass-input rounded-xl p-3 text-xs text-white" />
-                              <input value={contractorProofs[job.offer_id]?.note || ''} onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),note:e.target.value}})} placeholder="What was completed?" className="glass-input rounded-xl p-3 text-xs text-white" />
+                              <label className="glass-input rounded-xl p-3 text-xs text-slate-300 cursor-pointer"><span>{contractorProofs[job.offer_id]?.image?.name || 'Choose completion photo'}</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="sr-only" onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),image:e.target.files?.[0] || null}})} /></label>
+                              <input type="url" value={contractorProofs[job.offer_id]?.report_url || ''} onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),report_url:e.target.value}})} placeholder="Work report link (https://…)" className="glass-input rounded-xl p-3 text-xs text-white" />
+                              <textarea value={contractorProofs[job.offer_id]?.note || ''} onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),note:e.target.value}})} placeholder="Short completion summary" rows="2" className="sm:col-span-2 glass-input rounded-xl p-3 text-xs text-white resize-none" />
                               <button onClick={() => updateContractorJob(job, 'Proof Submitted')} className="sm:col-span-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold">Submit completed work for review</button>
                             </div>
                           )}
@@ -2495,20 +2469,12 @@
           </main>
 
           {/* FOOTER */}
-          <footer className="border-t border-slate-800/80 bg-slate-950/80 py-8 backdrop-blur-xl">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono text-slate-400">
+          <footer className="border-t border-slate-800/80 bg-slate-950 py-6 mb-16 lg:mb-0">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-center text-xs text-slate-400">
               <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-lg bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center text-slate-950 font-black text-[10px]">CP</div>
+                <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center"><Icon name="activity" className="w-3.5 h-3.5 text-slate-950" /></div>
                 <span className="text-slate-200 font-bold">CivicPulse</span>
-                <span>— Open Municipal Accountability Engine</span>
-              </div>
-              <div className="flex items-center gap-4 text-slate-400">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span>All Systems Operational</span>
-                </span>
-                <span>·</span>
-                <span>SHA-256 Ledger Verified</span>
+                <span>· Transparent civic reporting and verification</span>
               </div>
             </div>
           </footer>
