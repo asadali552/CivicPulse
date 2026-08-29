@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import analytics, auth, complaints, contractors, dashboard, discussions, geocoding, health, offers, operations, repair_requests, tracking, whatsapp
+from app.api.routes import analytics, auth, complaints, contractors, dashboard, discussions, geocoding, health, offers, operations, repair_requests, seo, tracking, whatsapp
 from app.core.config import project_root, settings, upload_directory
 from app.db.repository import civic_repo
 
@@ -84,6 +84,7 @@ app.include_router(tracking.router)
 app.include_router(analytics.router)
 app.include_router(discussions.router)
 app.include_router(whatsapp.router)
+app.include_router(seo.router)
 if LOCAL_UPLOADS_ENABLED:
     app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 from fastapi.staticfiles import StaticFiles
@@ -117,5 +118,10 @@ async def robots(request: Request):
 @app.get("/sitemap.xml", include_in_schema=False)
 async def sitemap(request: Request):
     base = str(request.base_url).rstrip("/")
-    xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>{base}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url></urlset>'
+    paths = ["/", *seo.SEO_PATHS]
+    entries = "".join(
+        f"<url><loc>{base}{path}</loc><changefreq>{'daily' if path == '/' else 'weekly'}</changefreq><priority>{'1.0' if path == '/' else '0.8'}</priority></url>"
+        for path in paths
+    )
+    xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{entries}</urlset>'
     return Response(xml, media_type="application/xml")

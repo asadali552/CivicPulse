@@ -169,9 +169,17 @@ def test_health_and_api_root(monkeypatch):
         health = client.get("/api/health")
         assert health.status_code == 200
         assert health.json()["database"] == "memory-demo"
-        assert client.get("/").status_code == 200
+        homepage = client.get("/")
+        assert homepage.status_code == 200
+        assert "Report civic problems in Pakistan" in homepage.text
         assert "Sitemap:" in client.get("/robots.txt").text
-        assert "<urlset" in client.get("/sitemap.xml").text
+        sitemap = client.get("/sitemap.xml").text
+        assert "<urlset" in sitemap
+        assert "/issues/potholes" in sitemap
+        for path in ("/how-it-works", "/methodology", "/privacy", "/issues/drainage", "/cities/multan"):
+            page = client.get(path)
+            assert page.status_code == 200
+            assert 'rel="canonical"' in page.text
 
 
 def test_complaint_create_track_and_dashboard(monkeypatch):

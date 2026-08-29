@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CivicPulse AI | Report and Track Civic Problems</title>
   <meta name="description" content="CivicPulse AI helps citizens report civic problems with evidence, track government action, verify resolutions and explore live incidents on a public city map." />
-  <meta name="keywords" content="CivicPulse, civic complaints, pothole reporting, municipal issues, smart city, citizen portal, civic map, Pakistan" />
   <meta name="author" content="CivicPulse AI" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
   <meta name="theme-color" content="#0B0F17" />
@@ -14,15 +13,17 @@
   <meta property="og:description" content="Evidence-backed civic reporting, transparent tracking and live city intelligence." />
   <meta property="og:url" content="__PUBLIC_BASE_URL__/" />
   <meta property="og:image" content="__PUBLIC_BASE_URL__/assets/civic-command-center.png" />
+  <meta property="og:locale" content="en_PK" />
   <meta property="og:site_name" content="CivicPulse AI" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="CivicPulse AI" />
   <meta name="twitter:description" content="Report and track civic problems with evidence-backed resolution." />
+  <meta name="twitter:image" content="__PUBLIC_BASE_URL__/assets/civic-command-center.png" />
   <link rel="canonical" href="__PUBLIC_BASE_URL__/" />
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
   <link rel="manifest" href="/assets/manifest.webmanifest" />
   <script type="application/ld+json">
-    {"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"__PUBLIC_BASE_URL__/#organization","name":"CivicPulse AI","url":"__PUBLIC_BASE_URL__/","logo":"__PUBLIC_BASE_URL__/assets/favicon.svg"},{"@type":"WebSite","@id":"__PUBLIC_BASE_URL__/#website","url":"__PUBLIC_BASE_URL__/","name":"CivicPulse AI","alternateName":"CivicPulse","publisher":{"@id":"__PUBLIC_BASE_URL__/#organization"}},{"@type":"WebApplication","name":"CivicPulse AI","url":"__PUBLIC_BASE_URL__/","applicationCategory":"GovernmentApplication","operatingSystem":"Any","description":"AI-powered civic issue reporting, tracking, public mapping and evidence-backed resolution platform.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}]}
+    {"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"__PUBLIC_BASE_URL__/#organization","name":"CivicPulse AI","alternateName":"CivicPulse","url":"__PUBLIC_BASE_URL__/","logo":"__PUBLIC_BASE_URL__/assets/civic-command-center.png","sameAs":["https://github.com/asadali552/CivicPulse"]},{"@type":"WebSite","@id":"__PUBLIC_BASE_URL__/#website","url":"__PUBLIC_BASE_URL__/","name":"CivicPulse AI","alternateName":"CivicPulse Pakistan","publisher":{"@id":"__PUBLIC_BASE_URL__/#organization"}},{"@type":"WebApplication","name":"CivicPulse AI","url":"__PUBLIC_BASE_URL__/","applicationCategory":"GovernmentApplication","operatingSystem":"Any","description":"AI-powered civic issue reporting, tracking, public mapping and evidence-backed resolution platform.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}]}
   </script>
   
   <!-- Tailwind CSS CDN -->
@@ -49,7 +50,18 @@
 <body class="bg-[#0B0F17] text-slate-100 font-sans antialiased selection:bg-sky-500 selection:text-white">
 
   <a href="#main-content" class="skip-link">Skip to main content</a>
-  <div id="root"></div>
+  <div id="root">
+    <main id="main-content" class="max-w-5xl mx-auto px-5 py-16">
+      <p class="text-sky-400 font-semibold uppercase tracking-wider">Evidence-backed civic action</p>
+      <h1 class="text-4xl sm:text-6xl font-bold text-white mt-4">Report civic problems in Pakistan and track verified action</h1>
+      <p class="text-lg text-slate-300 mt-6">CivicPulse helps citizens document potholes, waste, drainage, water, street-light, and public-infrastructure problems with photo and confirmed location evidence. Every accepted report receives transparent priority, public tracking, and proof-based resolution.</p>
+      <nav aria-label="CivicPulse guides" class="mt-8"><ul class="flex flex-wrap gap-4 text-sky-400">
+        <li><a href="/how-it-works">How CivicPulse works</a></li><li><a href="/methodology">Priority methodology</a></li><li><a href="/privacy">Privacy and evidence safety</a></li><li><a href="/issues/potholes">Report potholes</a></li><li><a href="/issues/waste-management">Report waste</a></li><li><a href="/issues/drainage">Report drainage</a></li>
+      </ul></nav>
+      <section class="mt-12"><h2 class="text-2xl font-semibold text-white">From report to accountable resolution</h2><p class="text-slate-300 mt-3">AI suggests category, severity, and department with visible confidence; uncertain cases enter human review. Authorities assign work, repair evidence is recorded, and citizens can verify whether the problem was actually fixed.</p></section>
+    </main>
+  </div>
+  <noscript><p>CivicPulse requires JavaScript for interactive reporting. Public guides remain available through the links above.</p></noscript>
 
   <script type="text/babel" src="/assets/js/app.jsx"></script>
   <script src="/assets/js/register-service-worker.js" defer></script>

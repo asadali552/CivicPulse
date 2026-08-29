@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+from collections.abc import Mapping
 
 from PIL import Image, UnidentifiedImageError
 
@@ -48,6 +49,8 @@ def extract_permitted_metadata(content: bytes) -> dict | None:
                 gps = exif.get_ifd(GPS_IFD_TAG)
             except (AttributeError, KeyError, TypeError, ValueError):
                 gps = exif.get(GPS_IFD_TAG) or {}
+            if not isinstance(gps, Mapping):
+                return None
             latitude = _decimal_degrees(gps.get(2), str(gps.get(1, ""))) if gps else None
             longitude = _decimal_degrees(gps.get(4), str(gps.get(3, ""))) if gps else None
             if latitude is None or longitude is None or not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
@@ -64,5 +67,5 @@ def extract_permitted_metadata(content: bytes) -> dict | None:
                 "captured_at": _capture_time(exif),
                 "source": "photo_exif",
             }
-    except (UnidentifiedImageError, OSError, ValueError):
+    except (UnidentifiedImageError, OSError, ValueError, TypeError, AttributeError):
         return None
