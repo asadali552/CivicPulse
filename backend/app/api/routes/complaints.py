@@ -51,10 +51,10 @@ ANALYSIS_TOKEN_TTL_SECONDS = 15 * 60
 
 def _analysis_binding(image_bytes: bytes | None, description: str, category_hint: str | None) -> str:
     image_digest = hashlib.sha256(image_bytes or b"").hexdigest()
-    # Category is intentionally excluded: the preview replaces "Let AI decide"
-    # with the signed AI category before final submission.
-    context = f"{image_digest}|{description.strip()}"
-    return hashlib.sha256(context.encode()).hexdigest()
+    # Image-backed analysis remains valid while the citizen edits AI-prepared
+    # wording. Text-only analysis remains bound to its submitted description.
+    binding_value = image_digest if image_bytes else f"{image_digest}|{description.strip()}"
+    return hashlib.sha256(binding_value.encode("utf-8")).hexdigest()
 
 
 def _sign_analysis(analysis: dict, image_bytes: bytes | None, description: str, category_hint: str | None) -> str:

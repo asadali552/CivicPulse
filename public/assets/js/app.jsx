@@ -405,7 +405,12 @@
           setAiAnalysis(analysis);
           setPhotoLocation(analysis.photo_location || null);
           setUploadedImage(absoluteMediaUrl(analysis.image_url) || URL.createObjectURL(file));
-          setReportForm(form => ({ ...form, category: analysis.category, severity: analysis.severity }));
+          setReportForm(form => ({
+            ...form,
+            category: analysis.category,
+            severity: analysis.severity,
+            description: form.description.trim() || analysis.summary || 'Civic issue shown in uploaded evidence',
+          }));
           setApiOnline(true);
         } catch (error) {
           setAiAnalysis(null);
@@ -979,7 +984,7 @@
                         </div>
 
                         <div>
-                          <label className="block text-xs font-mono text-slate-400 mb-1">Additional Observations (Optional)</label>
+                          <label className="block text-xs font-mono text-slate-400 mb-1">Report Description {uploadedFile ? '(AI prepared · editable)' : '(Required)'}</label>
                           <textarea 
                             rows={3}
                             value={reportForm.description}

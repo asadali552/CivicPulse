@@ -91,7 +91,7 @@ def test_photo_location_and_signed_analysis_are_reused(monkeypatch):
     with TestClient(app) as client:
         preview = client.post(
             "/api/complaints/analyze",
-            data={"description": "Large pothole", "category_hint": "Let AI decide"},
+            data={"description": "Civic issue shown in uploaded evidence", "category_hint": "Let AI decide"},
             files={"image": ("road.jpg", photo, "image/jpeg")},
         )
         assert preview.status_code == 200
@@ -104,7 +104,7 @@ def test_photo_location_and_signed_analysis_are_reused(monkeypatch):
         created = client.post(
             "/api/complaints/with-image",
             data={
-                "description": "Large pothole", "area": "Detected road location",
+                "description": "Road damage detected.", "area": "Detected road location",
                 "category_hint": "Road Infrastructure", "latitude": "31.5",
                 "longitude": "74.3333333", "location_source": "photo_exif",
                 "location_confirmed": "true", "location_accuracy_meters": "12",
