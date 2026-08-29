@@ -2037,17 +2037,17 @@
             {activeTab === 'admin' && (
               authUser?.role !== 'admin' ? (
                 <div className="max-w-4xl mx-auto px-4 py-10 space-y-5 reveal-up">
-                  <AuthCard 
-                    title="Municipal Authority Command Center" 
-                    subtitle="Executive governance console for dispatch, SLA auditing, and public escrow releases." 
-                    mode="login" 
-                    setMode={() => {}} 
-                    form={authForm} 
-                    setForm={setAuthForm} 
-                    submit={() => authenticate('login')} 
-                    busy={authBusy} 
-                    error={authError} 
-                    allowRegister={false} 
+                  <AuthCard
+                    title="Municipal Authority Command Center"
+                    subtitle="Executive governance console for dispatch, SLA auditing, and public escrow releases."
+                    mode="login"
+                    setMode={() => { }}
+                    form={authForm}
+                    setForm={setAuthForm}
+                    submit={() => authenticate('login')}
+                    busy={authBusy}
+                    error={authError}
+                    allowRegister={false}
                   />
                   {authUser && (
                     <button onClick={logout} className="block mx-auto text-xs text-slate-400 hover:text-white underline">
@@ -2073,14 +2073,13 @@
                         ['whatsapp', 'message-circle', 'WhatsApp'],
                         ['funding', 'hand-coins', 'Youth Escrow']
                       ].map(([id, icon, label]) => (
-                        <button 
-                          key={id} 
-                          onClick={() => setAdminView(id)} 
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold font-mono transition-all flex items-center gap-1.5 ${
-                            adminView === id 
-                              ? 'bg-sky-500 text-slate-950 shadow-glow-sky' 
+                        <button
+                          key={id}
+                          onClick={() => setAdminView(id)}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold font-mono transition-all flex items-center gap-1.5 ${adminView === id
+                              ? 'bg-sky-500 text-slate-950 shadow-glow-sky'
                               : 'glass-card border border-slate-800 text-slate-300 hover:text-white'
-                          }`}
+                            }`}
                         >
                           <Icon name={icon} className="w-3.5 h-3.5" />
                           <span>{label}</span>
@@ -2136,33 +2135,33 @@
                       </div>
 
                       <div className="grid sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
-                        <input 
-                          type="search" 
-                          aria-label="Search incidents" 
-                          placeholder="Search ID, area, type…" 
-                          value={searchQuery} 
-                          onChange={e => setSearchQuery(e.target.value)} 
+                        <input
+                          type="search"
+                          aria-label="Search incidents"
+                          placeholder="Search ID, area, type…"
+                          value={searchQuery}
+                          onChange={e => setSearchQuery(e.target.value)}
                           className="lg:col-span-2 glass-input rounded-xl px-3.5 py-2.5 text-xs text-white"
                         />
-                        <select aria-label="Reported within" value={queueFilters.days} onChange={e => setQueueFilters({...queueFilters, days: e.target.value})} className="glass-input rounded-xl px-3 py-2.5 text-xs text-white">
+                        <select aria-label="Reported within" value={queueFilters.days} onChange={e => setQueueFilters({ ...queueFilters, days: e.target.value })} className="glass-input rounded-xl px-3 py-2.5 text-xs text-white">
                           <option value="all" className="bg-slate-900">Any age</option>
                           <option value="1" className="bg-slate-900">Last 24 hours</option>
                           <option value="7" className="bg-slate-900">Last 7 days</option>
                           <option value="15" className="bg-slate-900">Last 15 days</option>
                           <option value="30" className="bg-slate-900">Last 30 days</option>
                         </select>
-                        <select aria-label="Work state" value={queueFilters.state} onChange={e => setQueueFilters({...queueFilters, state: e.target.value})} className="glass-input rounded-xl px-3 py-2.5 text-xs text-white">
+                        <select aria-label="Work state" value={queueFilters.state} onChange={e => setQueueFilters({ ...queueFilters, state: e.target.value })} className="glass-input rounded-xl px-3 py-2.5 text-xs text-white">
                           <option value="all" className="bg-slate-900">All statuses</option>
                           <option value="needs_action" className="bg-slate-900">Needs action</option>
                           <option value="assigned" className="bg-slate-900">Assigned</option>
                           <option value="unresolved" className="bg-slate-900">Unresolved</option>
                           <option value="resolved" className="bg-slate-900">Resolved</option>
                         </select>
-                        <select aria-label="Category" value={queueFilters.category} onChange={e => setQueueFilters({...queueFilters, category: e.target.value})} className="glass-input rounded-xl px-3 py-2.5 text-xs text-white">
+                        <select aria-label="Category" value={queueFilters.category} onChange={e => setQueueFilters({ ...queueFilters, category: e.target.value })} className="glass-input rounded-xl px-3 py-2.5 text-xs text-white">
                           <option value="all" className="bg-slate-900">All categories</option>
                           {reportCategories.map(category => <option key={category} value={category} className="bg-slate-900">{category}</option>)}
                         </select>
-                        <select aria-label="Severity" value={queueFilters.severity} onChange={e => setQueueFilters({...queueFilters, severity: e.target.value})} className="glass-input rounded-xl px-3 py-2.5 text-xs text-white">
+                        <select aria-label="Severity" value={queueFilters.severity} onChange={e => setQueueFilters({ ...queueFilters, severity: e.target.value })} className="glass-input rounded-xl px-3 py-2.5 text-xs text-white">
                           <option value="all" className="bg-slate-900">All severities</option>
                           {['Critical', 'High', 'Medium', 'Low'].map(level => <option key={level} value={level} className="bg-slate-900">{level}</option>)}
                         </select>
@@ -2175,12 +2174,11 @@
                           ['oldest', 'Oldest First'],
                           ['newest', 'Newest First']
                         ].map(([value, label]) => (
-                          <button 
-                            key={value} 
-                            onClick={() => setQueueFilters({...queueFilters, sort: value})} 
-                            className={`px-3 py-1 rounded-xl border text-[11px] font-bold transition-all ${
-                              queueFilters.sort === value ? 'border-sky-500/50 bg-sky-500/20 text-sky-300' : 'border-slate-800 text-slate-400 hover:text-white'
-                            }`}
+                          <button
+                            key={value}
+                            onClick={() => setQueueFilters({ ...queueFilters, sort: value })}
+                            className={`px-3 py-1 rounded-xl border text-[11px] font-bold transition-all ${queueFilters.sort === value ? 'border-sky-500/50 bg-sky-500/20 text-sky-300' : 'border-slate-800 text-slate-400 hover:text-white'
+                              }`}
                           >
                             {label}
                           </button>
@@ -2285,7 +2283,7 @@
                             {req.status === 'Pending Admin Review' && (
                               <>
                                 <label className="block text-xs text-slate-400 font-mono">Approved Escrow Amount
-                                  <input type="number" value={fundingBudgets[req.request_id] ?? req.estimated_price} onChange={e => setFundingBudgets({...fundingBudgets, [req.request_id]: e.target.value})} className="mt-1 w-full glass-input rounded-xl p-2.5 text-xs text-white font-mono" />
+                                  <input type="number" value={fundingBudgets[req.request_id] ?? req.estimated_price} onChange={e => setFundingBudgets({ ...fundingBudgets, [req.request_id]: e.target.value })} className="mt-1 w-full glass-input rounded-xl p-2.5 text-xs text-white font-mono" />
                                 </label>
                                 <div className="grid grid-cols-2 gap-2">
                                   <button onClick={() => decideRepair(req, false)} className="px-3 py-2 rounded-xl border border-red-500/30 text-red-400 text-xs font-bold">Reject</button>
@@ -2367,10 +2365,10 @@
                                 <div>
                                   <div className="text-xs font-mono text-slate-400 mb-2 font-bold">MATCHED CONTRACTORS</div>
                                   <div className="flex gap-2">
-                                    <select value={offerForm.contractor_id} onChange={e => setOfferForm({...offerForm, contractor_id: e.target.value})} className="min-w-0 flex-1 glass-input rounded-xl p-2.5 text-xs text-white">
+                                    <select value={offerForm.contractor_id} onChange={e => setOfferForm({ ...offerForm, contractor_id: e.target.value })} className="min-w-0 flex-1 glass-input rounded-xl p-2.5 text-xs text-white">
                                       {operationDetail.contractor_matches.map(c => <option key={c.contractor_id} value={c.contractor_id} className="bg-slate-900">{c.name} · {c.match_score}% Match · ★{c.rating}</option>)}
                                     </select>
-                                    <input type="number" placeholder="Budget PKR" value={offerForm.budget_cap} onChange={e => setOfferForm({...offerForm, budget_cap: e.target.value})} className="w-28 glass-input rounded-xl p-2.5 text-xs text-white font-mono" />
+                                    <input type="number" placeholder="Budget PKR" value={offerForm.budget_cap} onChange={e => setOfferForm({ ...offerForm, budget_cap: e.target.value })} className="w-28 glass-input rounded-xl p-2.5 text-xs text-white font-mono" />
                                     <button onClick={assignContractor} className="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold shadow-md">Dispatch Order</button>
                                   </div>
                                 </div>
@@ -2423,11 +2421,10 @@
                                   <div className="text-[11px] text-slate-400 font-mono">{item.location}</div>
                                 </td>
                                 <td className="p-4">
-                                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
-                                    item.severity === 'Critical' 
-                                      ? 'bg-red-500/10 text-red-400 border-red-500/30' 
+                                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${item.severity === 'Critical'
+                                      ? 'bg-red-500/10 text-red-400 border-red-500/30'
                                       : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                                  }`}>
+                                    }`}>
                                     {item.severity}
                                   </span>
                                 </td>
@@ -2439,14 +2436,14 @@
                                 </td>
                                 <td className="p-4 text-right">
                                   <div className="flex justify-end gap-2">
-                                    <button 
-                                      disabled={!nextOperationalStatus(item)} 
-                                      onClick={() => nextOperationalStatus(item) && updateStatus(item, nextOperationalStatus(item))} 
+                                    <button
+                                      disabled={!nextOperationalStatus(item)}
+                                      onClick={() => nextOperationalStatus(item) && updateStatus(item, nextOperationalStatus(item))}
                                       className="px-3 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 disabled:opacity-30 text-sky-400 font-semibold text-xs transition-all"
                                     >
                                       {nextOperationalStatus(item) ? `→ ${nextOperationalStatus(item)}` : 'Await proof'}
                                     </button>
-                                    <button 
+                                    <button
                                       onClick={() => inspectIncident(item)}
                                       className="px-3.5 py-1.5 rounded-xl glass-card border border-slate-700 hover:border-slate-600 text-slate-200 font-semibold text-xs transition-all shadow-sm"
                                     >
@@ -2469,7 +2466,7 @@
                     </div>
                   )}
                 </div>
-              )}
+              )
             )}
 
           </main>
