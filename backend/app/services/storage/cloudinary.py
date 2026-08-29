@@ -85,7 +85,12 @@ async def store_upload(file: UploadFile | None) -> str | None:
             ), timeout=30)
             return result["secure_url"]
         except Exception as exc:
-            logger.exception("Cloudinary upload failed; preserving evidence in local fallback: %s", type(exc).__name__)
+            logger.exception("Cloudinary upload failed: %s", type(exc).__name__)
+            if settings.environment == "production":
+                raise HTTPException(status_code=502, detail="Evidence storage is temporarily unavailable") from exc
+
+    if settings.environment == "production":
+        raise HTTPException(status_code=503, detail="Evidence storage is not configured")
 
     upload_root = upload_directory()
     upload_root.mkdir(parents=True, exist_ok=True)

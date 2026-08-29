@@ -75,4 +75,37 @@ cd backend
 
 ## Deploy
 
-The repository includes a production `Dockerfile` and `render.yaml`. Configure `MONGO_URI` and `GEMINI_API_KEY` in the hosting provider. Cloudinary variables are recommended because container-local uploads are ephemeral.
+### Vercel (frontend and backend together)
+
+Import the repository into Vercel with the repository root as the project root. Do not select `backend/` as the Root Directory. Vercel uses the root `index.py` entry point, serves the frontend at `/`, and serves FastAPI at `/api` on the same domain.
+
+Add these Production environment variables in **Project Settings → Environment Variables**:
+
+```text
+ENVIRONMENT=production
+ALLOW_MEMORY_FALLBACK=false
+SEED_DEMO_DATA=false
+MONGO_URI=<MongoDB Atlas connection string>
+MONGO_DB_NAME=civicpulse
+ADMIN_USERNAME=<secure administrator name>
+ADMIN_PASSWORD=<at least 12 characters>
+REPORTER_TOKEN_SECRET=<random value with at least 32 characters>
+CLOUDINARY_CLOUD_NAME=<Cloudinary cloud name>
+CLOUDINARY_API_KEY=<Cloudinary API key>
+CLOUDINARY_API_SECRET=<Cloudinary API secret>
+MAX_UPLOAD_MB=4
+GEMINI_API_KEY=<optional Gemini API key>
+GEMINI_MODEL=gemini-3.5-flash-lite
+```
+
+After deploying, set `PUBLIC_BASE_URL` to the production URL, such as `https://civicpulse.example.com`, and redeploy. The frontend uses same-origin `/api`, so a separate API URL or CORS configuration is not required.
+
+Production uploads are Cloudinary-only because Vercel Functions do not provide persistent local storage. The application refuses unsafe production settings during startup instead of silently losing data.
+
+Verify the deployment:
+
+```bash
+curl https://your-domain.vercel.app/api/health
+```
+
+The repository also retains `Dockerfile` and `render.yaml` for container-based deployment on Render.

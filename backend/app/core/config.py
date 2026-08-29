@@ -61,6 +61,12 @@ class Settings(BaseSettings):
                 unsafe.append("REPORTER_TOKEN_SECRET (minimum 32 characters)")
             if self.allow_memory_fallback:
                 unsafe.append("ALLOW_MEMORY_FALLBACK=false")
+            if self.mongo_uri in {"", "mongodb://localhost:27017"}:
+                unsafe.append("MONGO_URI")
+            if not all((self.cloudinary_cloud_name, self.cloudinary_api_key, self.cloudinary_api_secret)):
+                unsafe.append("Cloudinary credentials")
+            if self.max_upload_mb > 4:
+                unsafe.append("MAX_UPLOAD_MB=4 (Vercel request limit)")
             if unsafe:
                 raise ValueError("Unsafe production configuration: " + ", ".join(unsafe))
         return self

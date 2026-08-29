@@ -14,7 +14,9 @@ from app.db.repository import civic_repo
 
 PROJECT_ROOT = project_root()
 UPLOAD_DIR = upload_directory()
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+LOCAL_UPLOADS_ENABLED = settings.environment != "production"
+if LOCAL_UPLOADS_ENABLED:
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger("civicpulse.http")
 
 
@@ -81,7 +83,8 @@ app.include_router(tracking.router)
 app.include_router(analytics.router)
 app.include_router(discussions.router)
 app.include_router(whatsapp.router)
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+if LOCAL_UPLOADS_ENABLED:
+    app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 app.mount("/assets", StaticFiles(directory=PROJECT_ROOT / "assets"), name="assets")
 
 
