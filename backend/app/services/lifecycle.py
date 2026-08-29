@@ -25,7 +25,7 @@ class InvalidTransition(ValueError):
 def validate_transition(complaint: dict, target: str) -> None:
     current = complaint.get("status", "Submitted")
     if target == current:
-        return
+        raise InvalidTransition(f"Complaint is already {current}")
     if target not in STATUS_TRANSITIONS.get(current, set()):
         raise InvalidTransition(f"Cannot move complaint from {current} to {target}")
     if target in {"Evidence Uploaded", "Verification", "Resolved"} and not complaint.get("resolution_evidence"):

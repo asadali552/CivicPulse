@@ -332,6 +332,7 @@
       const [contractorProfile, setContractorProfile] = useState(null);
       const [contractors, setContractors] = useState([]);
       const [contractorForm, setContractorForm] = useState({service_area:'',skills:''});
+      const [contractorProofs, setContractorProofs] = useState({});
       const [fundingBudgets, setFundingBudgets] = useState({});
       const [authUser, setAuthUser] = useState(null);
       const [authMode, setAuthMode] = useState('login');
@@ -461,8 +462,19 @@
       };
 
       const updateContractorJob = async (offer, status) => {
-        try { await api(`/offers/${offer.offer_id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}); await refreshData(authUser); showToast(`Work order ${status.toLowerCase()}.`); }
+        const proof = contractorProofs[offer.offer_id] || {};
+        if (status === 'Proof Submitted' && (!proof.after_image_url?.trim() || !proof.note?.trim())) return showToast('Add a completion photo link and work summary first.');
+        try { await api(`/offers/${offer.offer_id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,...(status === 'Proof Submitted' ? proof : {})})}); await refreshData(authUser); showToast(status === 'Proof Submitted' ? 'Work submitted for authority verification.' : `Work order ${status.toLowerCase()}.`); }
         catch(error) { showToast(error.message); }
+      };
+
+      const confirmHumanReview = async report => {
+        const reason = window.prompt('Officer review note', 'AI classification checked against the citizen evidence.');
+        if (!reason?.trim()) return;
+        try {
+          const updated = await api(`/complaints/${report.id}/override`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({reason:reason.trim()})});
+          setSelectedReport(normalizeReport(updated)); await refreshData(authUser); showToast(`${report.id} reviewed and ready for assignment.`);
+        } catch (error) { showToast(error.message); }
       };
 
       const approveContractor = async (contractor, approved) => {
@@ -852,10 +864,10 @@
           </header>
 
           {/* MOBILE BOTTOM NAVIGATION */}
-          <nav aria-label="Mobile navigation" className="mobile-nav lg:hidden fixed bottom-0 inset-x-0 z-50 bg-[#070A11]/95 backdrop-blur-2xl border-t border-slate-800 px-2 pt-2 grid grid-cols-6 shadow-[0_-15px_35px_rgba(0,0,0,0.6)]">
+          <nav aria-label="Mobile navigation" className="mobile-nav lg:hidden fixed bottom-0 inset-x-0 z-50 bg-[#070A11] border-t border-slate-800 px-2 pt-2 grid grid-cols-6 shadow-[0_-8px_20px_rgba(0,0,0,0.35)]">
             {[
               ['landing','home','Home'], ['report','camera','Report'], ['track','search','Track'],
-              ['map','map','Map'], ['community','hammer','Youth'], ['admin','landmark','Authority']
+              ['map','map','Map'], ['community','hammer','Community'], ['contractor','hard-hat','Work']
             ].map(([id, icon, label]) => {
               const isActive = activeTab === id;
               return (
@@ -2020,6 +2032,14 @@
                               Start Work On-Site
                             </button>
                           )}
+                          {job.status === 'In Progress' && (
+                            <div className="w-full grid gap-2 sm:grid-cols-2">
+                              <input type="url" value={contractorProofs[job.offer_id]?.after_image_url || ''} onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),after_image_url:e.target.value}})} placeholder="Completion photo link" className="glass-input rounded-xl p-3 text-xs text-white" />
+                              <input value={contractorProofs[job.offer_id]?.note || ''} onChange={e => setContractorProofs({...contractorProofs,[job.offer_id]:{...(contractorProofs[job.offer_id]||{}),note:e.target.value}})} placeholder="What was completed?" className="glass-input rounded-xl p-3 text-xs text-white" />
+                              <button onClick={() => updateContractorJob(job, 'Proof Submitted')} className="sm:col-span-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold">Submit completed work for review</button>
+                            </div>
+                          )}
+                          {job.status === 'Proof Submitted' && <p className="text-xs text-emerald-300">Completion proof submitted. Waiting for authority verification.</p>}
                         </div>
                       </div>
                     ))}
@@ -2068,6 +2088,7 @@
                     <div className="flex flex-wrap items-center gap-2">
                       {[
                         ['queue', 'list-filter', 'Work Queue'],
+                        ['review', 'user-check', `Human Review (${reports.filter(r => r.needs_review || r.status === 'Needs Review').length})`],
                         ['map', 'map', 'Spatial Map'],
                         ['contractors', 'hard-hat', 'Contractors'],
                         ['whatsapp', 'message-circle', 'WhatsApp'],
@@ -2122,7 +2143,7 @@
                   )}
 
                   {/* QUEUE FILTERS */}
-                  {['queue', 'map'].includes(adminView) && (
+                  {['queue', 'map', 'review'].includes(adminView) && (
                     <div className="glass-panel border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xl">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -2312,7 +2333,7 @@
                   )}
 
                   {/* WORK QUEUE VIEW */}
-                  {adminView === 'queue' && (
+                  {['queue', 'review'].includes(adminView) && (
                     <div className="glass-panel border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
                       <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between">
                         <h2 className="text-xs font-bold text-white font-mono uppercase tracking-wider">Real-Time Municipal Queue</h2>
@@ -2369,7 +2390,7 @@
                                       {operationDetail.contractor_matches.map(c => <option key={c.contractor_id} value={c.contractor_id} className="bg-slate-900">{c.name} · {c.match_score}% Match · ★{c.rating}</option>)}
                                     </select>
                                     <input type="number" placeholder="Budget PKR" value={offerForm.budget_cap} onChange={e => setOfferForm({ ...offerForm, budget_cap: e.target.value })} className="w-28 glass-input rounded-xl p-2.5 text-xs text-white font-mono" />
-                                    <button onClick={assignContractor} className="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold shadow-md">Dispatch Order</button>
+                                    <button disabled={operationDetail.complaint.needs_review || operationDetail.offers.some(o => ['Sent','Accepted','In Progress','Proof Submitted','Approved'].includes(o.status))} onClick={assignContractor} className="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-35 disabled:cursor-not-allowed text-slate-950 text-xs font-bold shadow-md">Dispatch Order</button>
                                   </div>
                                 </div>
                                 <div>
@@ -2385,6 +2406,7 @@
                                           <div className="flex gap-1.5">
                                             {offer.status === 'Sent' && <button onClick={() => changeOfferStatus(offer, 'Accepted')} className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">Accept</button>}
                                             {offer.status === 'Accepted' && <button onClick={() => changeOfferStatus(offer, 'In Progress')} className="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[10px] font-bold">Start</button>}
+                                            {offer.status === 'Proof Submitted' && <button onClick={() => changeOfferStatus(offer, 'Approved')} className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">Verify work</button>}
                                           </div>
                                         </div>
                                       ))}
@@ -2413,7 +2435,7 @@
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-800/60 text-xs">
-                            {filteredAdminReports.map((item) => (
+                            {(adminView === 'review' ? filteredAdminReports.filter(item => item.needs_review || item.status === 'Needs Review') : filteredAdminReports).map((item) => (
                               <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
                                 <td className="p-4 font-mono font-bold text-sky-400">{item.id}</td>
                                 <td className="p-4">
@@ -2436,8 +2458,9 @@
                                 </td>
                                 <td className="p-4 text-right">
                                   <div className="flex justify-end gap-2">
+                                    {(item.needs_review || item.status === 'Needs Review') && <button onClick={() => confirmHumanReview(item)} className="px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/35 text-amber-300 font-semibold text-xs">Review AI</button>}
                                     <button
-                                      disabled={!nextOperationalStatus(item)}
+                                      disabled={!nextOperationalStatus(item) || item.needs_review || item.status === 'Needs Review'}
                                       onClick={() => nextOperationalStatus(item) && updateStatus(item, nextOperationalStatus(item))}
                                       className="px-3 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 disabled:opacity-30 text-sky-400 font-semibold text-xs transition-all"
                                     >

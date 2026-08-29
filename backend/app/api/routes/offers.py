@@ -29,8 +29,12 @@ async def create_offer(payload: OfferCreate, _admin: dict = Depends(require_admi
         raise HTTPException(status_code=404, detail="Contractor not found")
     if not contractor.get("verified") or not contractor.get("available"):
         raise HTTPException(status_code=409, detail="Contractor must be verified and available before dispatch")
+    if complaint.get("needs_review") or complaint.get("status") == "Needs Review":
+        raise HTTPException(status_code=409, detail="Human review must be completed before contractor dispatch")
     if complaint.get("status") == "Resolved":
         raise HTTPException(status_code=409, detail="Cannot dispatch work for a resolved complaint")
+    if complaint.get("resolution_evidence"):
+        raise HTTPException(status_code=409, detail="Completed work cannot be assigned again")
     active_offers = [item for item in await civic_repo.list_all("offers") if item.get("complaint_id") == payload.complaint_id and item.get("status") in {"Sent", "Accepted", "In Progress", "Proof Submitted"}]
     if active_offers:
         raise HTTPException(status_code=409, detail="This complaint already has an active contractor assignment")
@@ -98,13 +102,21 @@ async def update_offer_status(offer_id: str, payload: OfferStatusUpdate, user: d
         "In Progress": {"Proof Submitted"},
         "Proof Submitted": {"Approved", "Rejected"},
     }
-    if payload.status != offer.get("status") and payload.status not in allowed.get(offer.get("status"), set()):
+    if payload.status == offer.get("status"):
+        raise HTTPException(status_code=409, detail=f"Work order is already {payload.status}")
+    if payload.status not in allowed.get(offer.get("status"), set()):
         raise HTTPException(status_code=409, detail=f"Cannot move offer from {offer.get('status')} to {payload.status}")
+    if payload.status == "Proof Submitted" and (not payload.after_image_url or not payload.note):
+        raise HTTPException(status_code=422, detail="A completion photo URL and work summary are required")
     if payload.status == "Approved":
         complaint = await civic_repo.find_one("complaints", "complaint_id", offer["complaint_id"])
         if not complaint or not complaint.get("resolution_evidence"):
             raise HTTPException(status_code=409, detail="Stored completion evidence is required before approving contractor work")
-    updated = await civic_repo.update_one("offers", "offer_id", offer_id, {"status": payload.status, "note": payload.note})
+    offer_changes = {"status": payload.status, "note": payload.note, "updated_at": now_utc()}
+    if payload.status == "Proof Submitted":
+        offer_changes["after_image_url"] = payload.after_image_url
+        offer_changes["proof_submitted_at"] = now_utc()
+    updated = await civic_repo.update_one("offers", "offer_id", offer_id, offer_changes)
     complaint = await civic_repo.find_one("complaints", "complaint_id", offer["complaint_id"])
     if complaint and payload.status in {"Accepted", "In Progress", "Rejected"}:
         other_active = [item for item in await civic_repo.list_all("offers") if item.get("complaint_id") == offer["complaint_id"] and item.get("offer_id") != offer_id and item.get("status") in {"Sent", "Accepted", "In Progress", "Proof Submitted"}]
@@ -116,6 +128,28 @@ async def update_offer_status(offer_id: str, payload: OfferStatusUpdate, user: d
             "assigned_contractor_id": offer.get("contractor_id") if payload.status != "Rejected" else None,
             "assigned_contractor_name": offer.get("contractor_name") if payload.status != "Rejected" else None,
             "status_history": history,
+        })
+    elif complaint and payload.status == "Proof Submitted":
+        history = list(complaint.get("status_history", []))
+        history.append({"status": "Evidence Uploaded", "note": payload.note, "at": now_utc(), "actor_id": user.get("user_id"), "actor_role": "contractor"})
+        approvals = dict(complaint.get("resolution_approvals") or {})
+        approvals["contractor"] = True
+        await civic_repo.update_one("complaints", "complaint_id", offer["complaint_id"], {
+            "status": "Evidence Uploaded",
+            "resolution_evidence": {"after_image_url": payload.after_image_url, "completion_note": payload.note, "uploaded_by": offer.get("contractor_name"), "uploaded_at": now_utc()},
+            "resolution_approvals": approvals,
+            "status_history": history,
+            "updated_at": now_utc(),
+        })
+    elif complaint and payload.status == "Approved":
+        approvals = dict(complaint.get("resolution_approvals") or {})
+        approvals["government"] = True
+        history = list(complaint.get("status_history", []))
+        history.append({"status": "Verification", "note": payload.note or "Authority approved contractor completion proof.", "at": now_utc(), "actor_id": user.get("user_id"), "actor_role": "admin"})
+        await civic_repo.update_one("complaints", "complaint_id", offer["complaint_id"], {
+            "status": "Verification", "resolution_approvals": approvals,
+            "fully_verified": all(approvals.get(key) for key in ("contractor", "reporter", "government")),
+            "status_history": history, "updated_at": now_utc(),
         })
     await record_audit_event("offer", offer_id, "status_transition", user, {"status": offer.get("status")}, {"status": payload.status}, payload.note)
     return updated

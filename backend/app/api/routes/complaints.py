@@ -475,6 +475,8 @@ async def officer_override(complaint_id: str, payload: OfficerOverride, _admin: 
     complaint = await civic_repo.find_one("complaints", "complaint_id", complaint_id)
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
+    if not complaint.get("needs_review") and complaint.get("status") != "Needs Review":
+        raise HTTPException(status_code=409, detail="This report is not awaiting human review")
     final_category = payload.final_category or complaint["category"]
     final_severity = payload.final_severity or complaint["severity"]
     final_department = payload.final_department or complaint["department"]
@@ -497,7 +499,7 @@ async def officer_override(complaint_id: str, payload: OfficerOverride, _admin: 
             "priority_score": score,
             "priority_breakdown": breakdown,
             "needs_review": False,
-            "status": "Assigned",
+            "status": "Submitted",
             "final_decision": {
                 "category": final_category,
                 "severity": final_severity,

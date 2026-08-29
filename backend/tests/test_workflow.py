@@ -7,6 +7,8 @@ from app.services.priority import calculate_priority
 from app.services.workflow import duplicate_assessment, find_duplicate_incident, requires_review, sla_state
 from app.services.ai.gemini import analyze_complaint
 from app.core.config import settings
+from app.services.lifecycle import InvalidTransition, validate_transition
+import pytest
 
 
 def test_priority_is_bounded_and_explainable():
@@ -61,6 +63,14 @@ def test_sla_state_is_timezone_safe():
     result = sla_state(datetime.now(timezone.utc), 120)
     assert result["sla_status"] == "On Track"
     assert "remaining" in result["sla_remaining_label"]
+
+
+def test_progress_cannot_repeat_or_skip_required_steps():
+    with pytest.raises(InvalidTransition, match="already In Progress"):
+        validate_transition({"status": "In Progress"}, "In Progress")
+    with pytest.raises(InvalidTransition, match="Cannot move complaint"):
+        validate_transition({"status": "In Progress"}, "Resolved")
+    validate_transition({"status": "In Progress"}, "Resolution Submitted")
 
 
 def test_gemini_receives_inline_image_bytes(monkeypatch):
