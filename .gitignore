@@ -1,8 +1,12 @@
 .env
 .venv/
 .pycache/
+.pytest_cache/
 __pycache__/
 *.pyc
+.coverage
+htmlcov/
+*.log
 node_modules/
 dist/
 .DS_Store

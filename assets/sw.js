@@ -1,5 +1,13 @@
-const CACHE = 'civicpulse-v1';
-const CORE = ['/', '/assets/favicon.svg', '/assets/manifest.webmanifest'];
+const CACHE = 'civicpulse-v2';
+const CORE = [
+  '/',
+  '/assets/css/styles.css',
+  '/assets/js/tailwind-config.js',
+  '/assets/js/app.jsx',
+  '/assets/js/register-service-worker.js',
+  '/assets/favicon.svg',
+  '/assets/manifest.webmanifest',
+];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', event => {

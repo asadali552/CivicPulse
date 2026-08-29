@@ -1,0 +1,76 @@
+    :root { color-scheme: dark; }
+    html { scroll-behavior: smooth; }
+    body { overflow-x: hidden; }
+    button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+    button, a { outline-offset: 3px; }
+    button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+      outline: 2px solid #38bdf8;
+    }
+    .skip-link {
+      position: fixed; left: 1rem; top: -5rem; z-index: 100;
+      background: #38bdf8; color: #07111f; padding: .7rem 1rem;
+      border-radius: .65rem; font-weight: 700;
+    }
+    .skip-link:focus { top: 1rem; }
+    .surface-grid {
+      background-image: linear-gradient(rgba(56,189,248,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,.035) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(to bottom, black 25%, transparent 92%);
+    }
+    .reveal-up { animation: reveal-up .65s cubic-bezier(.22,1,.36,1) both; }
+    .reveal-up-delay { animation: reveal-up .65s .12s cubic-bezier(.22,1,.36,1) both; }
+    .soft-pulse { animation: soft-pulse 2.4s ease-in-out infinite; }
+    .interactive-card { transition: transform .25s ease, border-color .25s ease, background-color .25s ease; }
+    .interactive-card:hover { transform: translateY(-3px); border-color: rgba(56,189,248,.35); }
+    @keyframes reveal-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes soft-pulse { 0%,100% { opacity: .45; transform: scale(.92); } 50% { opacity: 1; transform: scale(1); } }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+    /* Custom Scrollbar & Utility Tweaks */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b0f17;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+
+    /* Light theme overrides for the existing dark-first component palette. */
+    html:not(.dark) body,
+    html:not(.dark) [class*="bg-[#0B0F17]"] { background-color: #f4f7fb !important; color: #172033; }
+    html:not(.dark) [class*="bg-slate-950"] { background-color: #ffffff !important; }
+    html:not(.dark) [class*="bg-slate-900"] { background-color: #f8fafc !important; }
+    html:not(.dark) [class*="bg-slate-800"] { background-color: #e8eef6 !important; }
+    html:not(.dark) [class*="border-slate-8"],
+    html:not(.dark) [class*="border-slate-7"] { border-color: #d7e0ec !important; }
+    html:not(.dark) .text-white,
+    html:not(.dark) [class*="text-slate-100"],
+    html:not(.dark) [class*="text-slate-200"],
+    html:not(.dark) [class*="text-slate-300"] { color: #172033 !important; }
+    html:not(.dark) [class*="text-slate-400"] { color: #526177 !important; }
+    html:not(.dark) [class*="text-slate-500"] { color: #64748b !important; }
+    html:not(.dark) input,
+    html:not(.dark) textarea,
+    html:not(.dark) select { color: #172033 !important; }
+    html:not(.dark) header { background: rgba(244, 247, 251, .9) !important; }
+    html:not(.dark) .leaflet-popup-content-wrapper,
+    html:not(.dark) .leaflet-popup-tip { background: #fff; color: #172033; }
+
+    @media (max-width: 767px) {
+      body { padding-bottom: 72px; }
+      .mobile-safe { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
+      .mobile-nav { padding-bottom: max(.45rem, env(safe-area-inset-bottom)); }
+      table { min-width: 720px; }
+      .leaflet-control-attribution { font-size: 8px !important; }
+      .interactive-card:hover { transform: none; }
+    }
+

@@ -97,7 +97,7 @@ This review is intentionally incremental. It preserves the FastAPI backend, Mong
 
 ### Remaining recommendation
 
-The `index.html` Babel/Tailwind-CDN application is the largest maintainability risk. Migrate it incrementally to the existing `frontend/src` scaffold with a build step, starting with API/auth and Command Center components. Do not rewrite the UI in one pass. Required tests: component state, auth persistence, filters, map popup privacy. Regression risk: build/deployment changes and CSS differences.
+The frontend has been separated into HTML, CSS, and JSX assets, but the Babel/Tailwind-CDN runtime remains the largest maintainability risk. If the project grows beyond the hackathon, introduce a build step incrementally, starting with API/auth and Command Center components. Required tests: component state, auth persistence, filters, and map popup privacy. Regression risk: build/deployment changes and CSS differences.
 
 ## P3 — Performance and scalability
 
