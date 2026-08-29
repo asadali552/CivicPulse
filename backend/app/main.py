@@ -13,6 +13,7 @@ from app.core.config import project_root, settings, upload_directory
 from app.db.repository import civic_repo
 
 PROJECT_ROOT = project_root()
+STATIC_ASSET_DIR = PROJECT_ROOT / "public" / "assets"
 UPLOAD_DIR = upload_directory()
 LOCAL_UPLOADS_ENABLED = settings.environment != "production"
 if LOCAL_UPLOADS_ENABLED:
@@ -85,7 +86,7 @@ app.include_router(discussions.router)
 app.include_router(whatsapp.router)
 if LOCAL_UPLOADS_ENABLED:
     app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-app.mount("/assets", StaticFiles(directory=PROJECT_ROOT / "assets"), name="assets")
+app.mount("/assets", StaticFiles(directory=STATIC_ASSET_DIR), name="assets")
 
 
 @app.get("/api", include_in_schema=False)

@@ -79,6 +79,8 @@ cd backend
 
 Import the repository into Vercel with the repository root as the project root. Do not select `backend/` as the Root Directory. Vercel uses the root `index.py` entry point, serves the frontend at `/`, and serves FastAPI at `/api` on the same domain.
 
+Bundled frontend assets live under `public/assets/`, which Vercel serves through its CDN. Complaint and repair evidence is uploaded to Cloudinary in production; files under local `data/uploads/` are intentionally ignored and are not deployed.
+
 Add these Production environment variables in **Project Settings → Environment Variables**:
 
 ```text

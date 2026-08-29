@@ -28,6 +28,12 @@
       return `${window.location.origin}${url}`;
     };
 
+    const DEMO_IMAGE_BY_CATEGORY = {
+      'Road Infrastructure': 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&q=80&w=800',
+      'Drainage / Sewerage': 'https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&q=80&w=800',
+      'Waste Management': 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&q=80&w=800',
+    };
+
     const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
     })[char]);
@@ -42,7 +48,11 @@
         ? `${item.needs_review ? 'Needs Human Review' : 'AI Confidence'} (${Math.round(item.confidence * 100)}%)`
         : item.confidence,
       duplicates: item.duplicate_count ?? item.duplicates ?? 0,
-      beforeImage: absoluteMediaUrl(item.image_url || item.beforeImage),
+      beforeImage: absoluteMediaUrl(
+        item.image_url
+        || item.beforeImage
+        || (item.data_label === 'Demo' ? DEMO_IMAGE_BY_CATEGORY[item.category] : null)
+      ),
       afterImage: absoluteMediaUrl(item.resolution_evidence?.after_image_url || item.afterImage),
       timeline: (item.status_history || item.timeline || []).map(entry => ({
         step: entry.status || entry.step,
@@ -1240,4 +1250,3 @@
     // MOUNT REACT APPLICATION
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
-
