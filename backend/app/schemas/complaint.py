@@ -8,6 +8,10 @@ class Location(BaseModel):
     area: str = Field(..., min_length=2, max_length=200, examples=["Main Market, Block C"])
     latitude: Optional[float] = Field(default=None, ge=-90, le=90)
     longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    source: Optional[Literal["photo_exif", "device_gps", "map_pin", "manual"]] = None
+    confirmed: bool = False
+    accuracy_meters: Optional[float] = Field(default=None, ge=0, le=100_000)
+    captured_at: Optional[datetime] = None
 
 
 class ComplaintCreate(BaseModel):

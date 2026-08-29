@@ -35,6 +35,8 @@ def public_complaint(item: dict) -> dict:
         location["latitude"] = round(location["latitude"], 3)
     if isinstance(location.get("longitude"), (int, float)):
         location["longitude"] = round(location["longitude"], 3)
+    location.pop("accuracy_meters", None)
+    location.pop("captured_at", None)
     result["location"] = location
     result["status_history"] = [
         {

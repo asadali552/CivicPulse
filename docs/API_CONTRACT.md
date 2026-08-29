@@ -11,12 +11,14 @@ Base URL: `http://localhost:8000/api`
 - `GET /complaints`
 - `GET /complaints/{complaint_id}`
 - `POST /complaints`
-- `POST /complaints/analyze` (multipart AI preview; optionally stores evidence)
-- `POST /complaints/with-image`
+- `POST /complaints/analyze` (multipart AI preview; returns permitted EXIF GPS fields when present and a 15-minute signed analysis token; does not store evidence)
+- `POST /complaints/with-image` (accepts the signed preview token to avoid duplicate AI analysis, plus confirmed location source and accuracy fields)
 - `PATCH /complaints/{complaint_id}/status`
 - `POST /complaints/{complaint_id}/resolution-approval`
 
 Resolution map state is derived from `resolution_approvals.contractor`, `resolution_approvals.reporter`, and `resolution_approvals.government`. All three approvals plus evidence produce a fully verified resolution.
+
+Location source values are `photo_exif`, `device_gps`, `map_pin`, or `manual`. EXIF coordinates are suggestions only and require explicit confirmation. Exact accuracy and capture time are removed from public complaint responses, and stored images contain no EXIF metadata.
 
 MongoDB retention is checked after inserts. Above `MONGO_CLEANUP_THRESHOLD_MB` (default 450 MB), the oldest resolved complaint bundles are removed first until the database reaches `MONGO_CLEANUP_TARGET_MB` (default 425 MB).
 

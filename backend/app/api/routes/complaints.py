@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from typing import Optional
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
+import base64
+import binascii
+import json
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, UploadFile, File, Form, Request
 import hashlib
@@ -24,6 +27,7 @@ from app.schemas.complaint import (
 from app.services.ai.gemini import analyze_complaint
 from app.services.priority import calculate_priority, with_current_priority
 from app.services.storage.cloudinary import store_upload
+from app.services.image_metadata import extract_permitted_metadata
 from app.services.workflow import (
     duplicate_assessment,
     find_duplicate_incident,
@@ -42,6 +46,46 @@ from app.services.reporter_access import create_reporter_access, verify_reporter
 
 router = APIRouter(prefix="/api/complaints", tags=["complaints"])
 intake_attempts: dict[str, deque] = defaultdict(deque)
+ANALYSIS_TOKEN_TTL_SECONDS = 15 * 60
+
+
+def _analysis_binding(image_bytes: bytes | None, description: str, category_hint: str | None) -> str:
+    image_digest = hashlib.sha256(image_bytes or b"").hexdigest()
+    # Category is intentionally excluded: the preview replaces "Let AI decide"
+    # with the signed AI category before final submission.
+    context = f"{image_digest}|{description.strip()}"
+    return hashlib.sha256(context.encode()).hexdigest()
+
+
+def _sign_analysis(analysis: dict, image_bytes: bytes | None, description: str, category_hint: str | None) -> str:
+    payload = {
+        "analysis": analysis,
+        "binding": _analysis_binding(image_bytes, description, category_hint),
+        "expires_at": int(datetime.now(timezone.utc).timestamp()) + ANALYSIS_TOKEN_TTL_SECONDS,
+    }
+    encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()).rstrip(b"=")
+    signature = hmac.new(settings.reporter_token_secret.encode(), encoded, hashlib.sha256).digest()
+    return f"{encoded.decode()}.{base64.urlsafe_b64encode(signature).rstrip(b'=').decode()}"
+
+
+def _verified_analysis(token: str | None, image_bytes: bytes | None, description: str, category_hint: str | None) -> dict | None:
+    if not token or "." not in token:
+        return None
+    encoded_text, signature_text = token.split(".", 1)
+    encoded = encoded_text.encode()
+    try:
+        signature = base64.urlsafe_b64decode(signature_text + "=" * (-len(signature_text) % 4))
+        expected = hmac.new(settings.reporter_token_secret.encode(), encoded, hashlib.sha256).digest()
+        if not hmac.compare_digest(signature, expected):
+            return None
+        payload = json.loads(base64.urlsafe_b64decode(encoded_text + "=" * (-len(encoded_text) % 4)))
+        if payload.get("expires_at", 0) < int(datetime.now(timezone.utc).timestamp()):
+            return None
+        if payload.get("binding") != _analysis_binding(image_bytes, description, category_hint):
+            return None
+        return payload.get("analysis")
+    except (ValueError, TypeError, json.JSONDecodeError, binascii.Error):
+        return None
 
 
 def check_intake_rate(request: Request) -> None:
@@ -64,14 +108,22 @@ async def analyze_evidence(
     if image and image.content_type not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
         raise HTTPException(status_code=415, detail="Only JPEG, PNG, WebP, and GIF images are supported")
     image_bytes = await image.read() if image else None
-    if image_bytes and len(image_bytes) > settings.max_upload_mb * 1024 * 1024:
-        raise HTTPException(status_code=413, detail=f"Image exceeds the {settings.max_upload_mb} MB upload limit")
+    upload_limit_mb = min(settings.max_upload_mb, 4) if settings.environment == "production" else settings.max_upload_mb
+    if image_bytes and len(image_bytes) > upload_limit_mb * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"Image exceeds the {upload_limit_mb} MB upload limit")
+    photo_location = extract_permitted_metadata(image_bytes) if image_bytes else None
     analysis = await analyze_complaint(
         description, None, category_hint,
         image_bytes=image_bytes,
         image_mime_type=image.content_type if image else None,
     )
-    return {"image_url": None, **analysis}
+    location_allowed = analysis.get("is_civic_issue") is not False or analysis.get("confidence", 0) < 0.75
+    return {
+        "image_url": None,
+        "photo_location": photo_location if location_allowed else None,
+        "analysis_token": _sign_analysis(analysis, image_bytes, description, category_hint),
+        **analysis,
+    }
 
 
 @router.get("")
@@ -280,20 +332,27 @@ async def create_complaint_with_image(
     category_hint: Optional[str] = Form(default=None),
     latitude: Optional[float] = Form(default=None),
     longitude: Optional[float] = Form(default=None),
+    location_source: Optional[str] = Form(default=None),
+    location_confirmed: bool = Form(default=False),
+    location_accuracy_meters: Optional[float] = Form(default=None),
+    photo_captured_at: Optional[datetime] = Form(default=None),
     image: Optional[UploadFile] = File(default=None),
     image_quality: str = Form(default="usable"),
     reporter_contact: Optional[str] = Form(default=None),
+    analysis_token: Optional[str] = Form(default=None),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
 ):
     check_intake_rate(request)
     image_bytes = await image.read() if image else None
     if image:
         await image.seek(0)
-    analysis = await analyze_complaint(
-        description, None, category_hint,
-        image_bytes=image_bytes,
-        image_mime_type=image.content_type if image else None,
-    )
+    analysis = _verified_analysis(analysis_token, image_bytes, description, category_hint)
+    if analysis is None:
+        analysis = await analyze_complaint(
+            description, None, category_hint,
+            image_bytes=image_bytes,
+            image_mime_type=image.content_type if image else None,
+        )
     if image_bytes and analysis.get("is_civic_issue") is False and analysis.get("confidence", 0) >= 0.75:
         raise HTTPException(status_code=422, detail="The uploaded image does not show a relevant civic issue")
     if image:
@@ -301,7 +360,15 @@ async def create_complaint_with_image(
     image_url = await store_upload(image)
     payload = ComplaintCreate(
         description=description,
-        location={"area": area, "latitude": latitude, "longitude": longitude},
+        location={
+            "area": area,
+            "latitude": latitude,
+            "longitude": longitude,
+            "source": location_source,
+            "confirmed": location_confirmed,
+            "accuracy_meters": location_accuracy_meters,
+            "captured_at": photo_captured_at,
+        },
         category_hint=category_hint,
         image_url=image_url,
         image_quality=image_quality,

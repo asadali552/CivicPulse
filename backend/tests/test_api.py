@@ -2,8 +2,10 @@ from copy import deepcopy
 import hashlib
 import hmac
 import json
+from io import BytesIO
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.db.repository import civic_repo
 from app.main import app
@@ -42,6 +44,83 @@ def youth_register(client):
     })
     assert response.status_code == 200
     return {"X-CSRF-Token": response.json()["csrf_token"]}
+
+
+def jpeg_with_gps() -> bytes:
+    image = Image.new("RGB", (12, 12), "gray")
+    exif = Image.Exif()
+    exif[36867] = "2026:08:29 12:30:00"
+    exif[34853] = {
+        1: "N", 2: (31.0, 30.0, 0.0),
+        3: "E", 4: (74.0, 20.0, 0.0),
+        31: 12.0,
+    }
+    output = BytesIO()
+    image.save(output, format="JPEG", exif=exif)
+    return output.getvalue()
+
+
+def test_photo_location_and_signed_analysis_are_reused(monkeypatch):
+    calls = 0
+
+    async def connect():
+        reset_memory_repository()
+
+    async def seed():
+        return None
+
+    async def fake_analysis(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return {
+            "category": "Road Infrastructure", "severity": "High", "confidence": 0.93,
+            "department": "Roads Department", "summary": "Road damage detected.",
+            "reasoning": "Visible road damage requires repair.", "safety_flag": False,
+            "multi_issue_detected": False, "is_civic_issue": True,
+        }
+
+    async def fake_storage(_image):
+        return "https://res.cloudinary.com/demo/evidence.jpg"
+
+    monkeypatch.setattr(civic_repo, "connect", connect)
+    monkeypatch.setattr(civic_repo, "ensure_demo_data", seed)
+    monkeypatch.setattr("app.api.routes.complaints.analyze_complaint", fake_analysis)
+    monkeypatch.setattr("app.api.routes.complaints.store_upload", fake_storage)
+    photo = jpeg_with_gps()
+
+    with TestClient(app) as client:
+        preview = client.post(
+            "/api/complaints/analyze",
+            data={"description": "Large pothole", "category_hint": "Let AI decide"},
+            files={"image": ("road.jpg", photo, "image/jpeg")},
+        )
+        assert preview.status_code == 200
+        preview_body = preview.json()
+        assert preview_body["photo_location"] == {
+            "latitude": 31.5, "longitude": 74.3333333, "accuracy_meters": 12.0,
+            "captured_at": "2026-08-29T12:30:00", "source": "photo_exif",
+        }
+
+        created = client.post(
+            "/api/complaints/with-image",
+            data={
+                "description": "Large pothole", "area": "Detected road location",
+                "category_hint": "Road Infrastructure", "latitude": "31.5",
+                "longitude": "74.3333333", "location_source": "photo_exif",
+                "location_confirmed": "true", "location_accuracy_meters": "12",
+                "photo_captured_at": "2026-08-29T12:30:00",
+                "analysis_token": preview_body["analysis_token"],
+            },
+            files={"image": ("road.jpg", photo, "image/jpeg")},
+        )
+        assert created.status_code == 200
+        assert calls == 1
+        assert created.json()["location"]["source"] == "photo_exif"
+        assert created.json()["location"]["confirmed"] is True
+        public_location = client.get("/api/complaints").json()["complaints"][0]["location"]
+        assert public_location["source"] == "photo_exif"
+        assert "accuracy_meters" not in public_location
+        assert "captured_at" not in public_location
 
 
 def test_persisted_mongo_style_session_datetime_is_accepted(monkeypatch):

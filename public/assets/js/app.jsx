@@ -104,6 +104,31 @@
       return <div ref={mapNode} className="h-[440px] w-full rounded-xl overflow-hidden bg-slate-950" />;
     }
 
+    function LocationPicker({ latitude, longitude, onPick }) {
+      const mapNode = useRef(null);
+      const onPickRef = useRef(onPick);
+      useEffect(() => { onPickRef.current = onPick; }, [onPick]);
+      useEffect(() => {
+        if (!window.L || !mapNode.current) return;
+        const hasLocation = Number.isFinite(latitude) && Number.isFinite(longitude);
+        const center = hasLocation ? [latitude, longitude] : [30.1575, 71.5249];
+        const map = window.L.map(mapNode.current).setView(center, hasLocation ? 17 : 11);
+        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
+        }).addTo(map);
+        const marker = window.L.marker(center, { draggable: true }).addTo(map);
+        const select = ({ lat, lng }) => {
+          marker.setLatLng([lat, lng]);
+          onPickRef.current(lat, lng);
+        };
+        map.on('click', event => select(event.latlng));
+        marker.on('dragend', () => select(marker.getLatLng()));
+        setTimeout(() => map.invalidateSize(), 0);
+        return () => map.remove();
+      }, []);
+      return <div ref={mapNode} className="h-72 w-full rounded-xl overflow-hidden bg-slate-950 border border-slate-800" aria-label="Choose report location on map" />;
+    }
+
     // --- ICON HELPER COMPONENT FOR LUCIDE CDN ---
     const Icon = ({ name, className = "w-5 h-5", ...props }) => {
       const iconRef = useRef(null);
@@ -248,14 +273,20 @@
       const [authError, setAuthError] = useState('');
       const [isAnalyzing, setIsAnalyzing] = useState(false);
       const [analysisComplete, setAnalysisComplete] = useState(false);
+      const [photoLocation, setPhotoLocation] = useState(null);
+      const [showLocationMap, setShowLocationMap] = useState(false);
       const [reportForm, setReportForm] = useState({
         category: 'Let AI decide',
         severity: 'High',
-        location: 'Bosan Road, Near Gate 2, Multan',
-        description: 'Severe surface depression and crack extending across the main northbound transit lane.',
+        location: '',
+        description: '',
         latitude: null,
-        longitude: null
-        ,reporterContact: ''
+        longitude: null,
+        locationSource: null,
+        locationConfirmed: false,
+        locationAccuracy: null,
+        photoCapturedAt: null,
+        reporterContact: ''
       });
 
       // Admin Filters
@@ -359,7 +390,7 @@
         const file = e.target.files?.[0];
         if (!file) return;
         if (!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type)) return showToast('Use a JPEG, PNG, WebP, or GIF image.');
-        if (file.size > 10 * 1024 * 1024) return showToast('Image must be 10 MB or smaller.');
+        if (file.size > 4 * 1024 * 1024) return showToast('Image must be 4 MB or smaller.');
         setUploadedFile(file);
         setUploadedImage(URL.createObjectURL(file));
         setReportStep(2);
@@ -372,11 +403,13 @@
           data.append('category_hint', reportForm.category || 'Let AI decide');
           const analysis = await api('/complaints/analyze', { method: 'POST', body: data });
           setAiAnalysis(analysis);
+          setPhotoLocation(analysis.photo_location || null);
           setUploadedImage(absoluteMediaUrl(analysis.image_url) || URL.createObjectURL(file));
           setReportForm(form => ({ ...form, category: analysis.category, severity: analysis.severity }));
           setApiOnline(true);
         } catch (error) {
           setAiAnalysis(null);
+          setPhotoLocation(null);
           showToast(`AI analysis unavailable: ${error.message}`);
         } finally {
           setIsAnalyzing(false);
@@ -396,7 +429,12 @@
           data.append('image_quality', uploadedFile ? 'usable' : 'missing');
           if (reportForm.latitude != null) data.append('latitude', reportForm.latitude);
           if (reportForm.longitude != null) data.append('longitude', reportForm.longitude);
+          if (reportForm.locationSource) data.append('location_source', reportForm.locationSource);
+          data.append('location_confirmed', String(reportForm.locationConfirmed));
+          if (reportForm.locationAccuracy != null) data.append('location_accuracy_meters', reportForm.locationAccuracy);
+          if (reportForm.photoCapturedAt) data.append('photo_captured_at', reportForm.photoCapturedAt);
           if (reportForm.reporterContact.trim()) data.append('reporter_contact', reportForm.reporterContact.trim());
+          if (aiAnalysis?.analysis_token) data.append('analysis_token', aiAnalysis.analysis_token);
           if (uploadedFile) data.append('image', uploadedFile);
           const created = await api('/complaints/with-image', { method: 'POST', headers: {'Idempotency-Key': reportSubmissionKeyRef.current}, body: data });
           const newReport = normalizeReport(created);
@@ -428,25 +466,46 @@
         catch (error) { showToast(error.message); }
       };
 
+      const reverseGeocode = async (latitude, longitude, source, extra = {}) => {
+        setReportForm(form => ({
+          ...form, latitude, longitude, locationSource: source, locationConfirmed: true,
+          locationAccuracy: extra.accuracy ?? null,
+          photoCapturedAt: extra.capturedAt ?? form.photoCapturedAt,
+        }));
+        try {
+          const place = await api(`/geo/reverse?latitude=${latitude}&longitude=${longitude}`);
+          setReportForm(form => ({...form, location: place.display_name, latitude, longitude, locationSource: source, locationConfirmed: true}));
+          showToast(`Location found: ${place.area || place.city || place.display_name}`);
+        } catch (error) {
+          setReportForm(form => ({...form, location: form.location || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`}));
+          showToast('Coordinates attached; the readable address lookup is unavailable.');
+        }
+      };
+
+      const usePhotoLocation = () => {
+        if (!photoLocation) return;
+        reverseGeocode(photoLocation.latitude, photoLocation.longitude, 'photo_exif', {
+          accuracy: photoLocation.accuracy_meters,
+          capturedAt: photoLocation.captured_at,
+        });
+      };
+
       const captureLocation = () => {
         if (!navigator.geolocation) return showToast('GPS is not supported by this device.');
         navigator.geolocation.getCurrentPosition(
-          async position => {
+          position => {
             const latitude = position.coords.latitude;
             const longitude = position.coords.longitude;
-            setReportForm(form => ({...form, latitude, longitude}));
             showToast('GPS captured. Looking up the street address…');
-            try {
-              const place = await api(`/geo/reverse?latitude=${latitude}&longitude=${longitude}`);
-              setReportForm(form => ({...form, location: place.display_name, latitude, longitude}));
-              showToast(`Location found: ${place.area || place.city || place.display_name}`);
-            } catch (error) {
-              showToast('GPS attached, but the readable address lookup is temporarily unavailable.');
-            }
+            reverseGeocode(latitude, longitude, 'device_gps', {accuracy: position.coords.accuracy});
           },
           () => showToast('Location permission was not granted.'),
           { enableHighAccuracy: true, timeout: 10000 }
         );
+      };
+
+      const selectMapLocation = (latitude, longitude) => {
+        reverseGeocode(latitude, longitude, 'map_pin');
       };
 
       const approveResolution = async (report, stakeholder) => {
@@ -806,13 +865,13 @@
                         Select Photo
                         <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handlePhotoUpload} className="hidden" />
                       </label>
-                      <button type="button" onClick={()=>{setUploadedFile(null);setUploadedImage(null);setAiAnalysis(null);setAnalysisComplete(true);setReportStep(2)}} className="text-xs text-slate-400 underline underline-offset-4">Continue without a photo</button>
+                      <button type="button" onClick={()=>{setUploadedFile(null);setUploadedImage(null);setAiAnalysis(null);setPhotoLocation(null);setAnalysisComplete(true);setReportStep(2)}} className="text-xs text-slate-400 underline underline-offset-4">Continue without a photo</button>
                     </div>
 
                     <div className="text-left bg-slate-950 border border-slate-800 p-4 rounded-xl flex items-start gap-3">
                       <Icon name="shield-check" className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
                       <p className="text-xs text-slate-400 leading-relaxed">
-                        <strong className="text-slate-200">Evidence Privacy:</strong> Uploaded images are validated, safely re-encoded, and stripped of embedded GPS and device metadata before publication. Avoid including faces or license plates where possible.
+                        <strong className="text-slate-200">Evidence Privacy:</strong> If the photo contains GPS, CivicPulse offers it for your confirmation after civic screening. Only approved coordinates are retained; the published image is safely re-encoded with all metadata removed.
                       </p>
                     </div>
                   </div>
@@ -883,6 +942,19 @@
 
                     {analysisComplete && (
                       <div className="border-t border-slate-800 pt-6 space-y-4">
+                        {photoLocation && (aiAnalysis?.is_civic_issue !== false || aiAnalysis?.confidence < .75) && (
+                          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              <div className="text-xs font-semibold text-emerald-300">Photo location detected</div>
+                              <div className="text-[11px] text-slate-400 mt-1 font-mono">{photoLocation.latitude.toFixed(5)}, {photoLocation.longitude.toFixed(5)}{photoLocation.captured_at ? ` · captured ${new Date(photoLocation.captured_at).toLocaleString()}` : ''}</div>
+                              <div className="text-[10px] text-slate-500 mt-1">Use only if this is where the civic issue actually exists.</div>
+                            </div>
+                            <button type="button" onClick={usePhotoLocation} className="shrink-0 px-4 py-2 rounded-lg bg-emerald-500 text-slate-950 text-xs font-semibold">Use photo location</button>
+                          </div>
+                        )}
+                        {!photoLocation && uploadedFile && (aiAnalysis?.is_civic_issue !== false || aiAnalysis?.confidence < .75) && (
+                          <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300">This photo has no usable GPS metadata. Use live GPS, enter an address, or choose the exact point on the map.</div>
+                        )}
                         <div>
                           <label className="block text-xs font-mono text-slate-400 mb-1">Location Coordinates / Address</label>
                           <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm">
@@ -890,11 +962,15 @@
                             <input 
                               type="text" 
                               value={reportForm.location}
-                              onChange={(e) => setReportForm({...reportForm, location: e.target.value})}
+                              placeholder="Enter an area or address"
+                              onChange={(e) => setReportForm({...reportForm, location: e.target.value, locationSource: reportForm.latitude == null ? 'manual' : reportForm.locationSource, locationConfirmed: true})}
                               className="bg-transparent text-white focus:outline-none w-full"
                             />
-                            <button type="button" onClick={captureLocation} className={`shrink-0 px-2 py-1 rounded text-[10px] font-mono ${reportForm.latitude ? 'bg-emerald-500/10 text-emerald-400' : 'bg-sky-500/10 text-sky-400'}`}>{reportForm.latitude ? 'GPS ADDED' : 'USE GPS'}</button>
+                            <button type="button" onClick={captureLocation} className={`shrink-0 px-2 py-1 rounded text-[10px] font-mono ${reportForm.locationSource === 'device_gps' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-sky-500/10 text-sky-400'}`}>{reportForm.locationSource === 'device_gps' ? 'GPS ADDED' : 'USE GPS'}</button>
                           </div>
+                          {reportForm.locationSource && <div className="mt-2 text-[10px] font-mono text-emerald-400">Confirmed source: {reportForm.locationSource.replace('_', ' ')}{reportForm.locationAccuracy ? ` · ±${Math.round(reportForm.locationAccuracy)}m` : ''}</div>}
+                          <button type="button" onClick={()=>setShowLocationMap(value=>!value)} className="mt-3 text-xs text-sky-400 underline underline-offset-4">{showLocationMap ? 'Hide map' : 'Choose exact point on map'}</button>
+                          {showLocationMap && <div className="mt-3"><LocationPicker latitude={reportForm.latitude} longitude={reportForm.longitude} onPick={selectMapLocation}/><p className="text-[10px] text-slate-500 mt-2">Click the map or drag the marker, then confirm the readable address above.</p></div>}
                         </div>
 
                         <div>

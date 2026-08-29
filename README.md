@@ -4,7 +4,7 @@ AI-powered smart civic governance and decision-support platform for hackathon de
 
 ## MVP Demo Flow
 
-1. Citizen reports a civic problem from the portal with photo, description, and location.
+1. Citizen reports a civic problem from the portal; after civic screening, GPS can be confirmed from photo EXIF, live device location, a map pin, or a manual address.
 2. Backend stores the complaint and runs AI analysis.
 3. AI returns category, severity, department, confidence, and summary.
 4. Priority engine calculates a transparent score.
@@ -21,7 +21,8 @@ The community workflow is restricted to explicitly recognized, low-risk cleanup 
 - Every citizen report remains a distinct source record and can link to a shared incident cluster.
 - Reporters who provide private contact details receive a time-limited verification token; administrators cannot impersonate reporter approval.
 - Public accountability receipts expose AI recommendations, priority methodology, SLA state, evidence hashes, approvals, and a tamper-evident audit chain without exposing reporter identity.
-- Uploads are decoded, pixel-limited, orientation-normalized, metadata-stripped, and safely re-encoded.
+- Permitted photo GPS fields are extracted temporarily and used only after citizen confirmation; uploads are then decoded, pixel-limited, orientation-normalized, metadata-stripped, and safely re-encoded.
+- A signed, image-bound preview token reuses the initial AI result during submission, avoiding a second Gemini call unless the evidence or description changes.
 - Public text is screened for common phone, email, and national-identifier patterns; public coordinates are reduced in precision.
 - Production startup rejects default administrator credentials, weak reporter-token secrets, and memory fallback.
 
