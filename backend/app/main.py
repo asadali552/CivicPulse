@@ -115,6 +115,11 @@ async def robots(request: Request):
     return PlainTextResponse(f"User-agent: *\nAllow: /\nSitemap: {base}/sitemap.xml\n")
 
 
+@app.get("/google071715fa18feee5a.html", include_in_schema=False)
+async def google_site_verification():
+    return PlainTextResponse("google-site-verification: google071715fa18feee5a.html")
+
+
 @app.get("/sitemap.xml", include_in_schema=False)
 async def sitemap(request: Request):
     base = str(request.base_url).rstrip("/")
