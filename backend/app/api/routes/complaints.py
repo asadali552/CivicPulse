@@ -171,6 +171,18 @@ async def map_complaints(
     return {"complaints": [public_complaint(with_current_priority(item)) for item in complaints], "count": len(complaints), "truncated": len(complaints) == limit}
 
 
+@router.get("/map/clusters")
+async def map_clusters(
+    west: float = Query(ge=-180, le=180), south: float = Query(ge=-90, le=90),
+    east: float = Query(ge=-180, le=180), north: float = Query(ge=-90, le=90),
+    zoom: int = Query(default=12, ge=1, le=19),
+):
+    if west >= east or south >= north:
+        raise HTTPException(status_code=422, detail="Invalid map bounding box")
+    clusters = await civic_repo.complaint_clusters(west, south, east, north, zoom)
+    return {"clusters": clusters, "count": len(clusters)}
+
+
 @router.get("/{complaint_id}")
 async def get_complaint(complaint_id: str):
     complaint = await civic_repo.find_one("complaints", "complaint_id", complaint_id)

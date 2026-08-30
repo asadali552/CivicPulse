@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 from app.core.security import require_admin
 
 from app.db.repository import civic_repo, public_id
@@ -11,10 +14,11 @@ router = APIRouter(prefix="/api/contractors", tags=["contractors"])
 
 class ContractorApproval(BaseModel):
     approved: bool
+    payout_account_id: Optional[str] = None
 
 
 @router.get("")
-async def list_contractors():
+async def list_contractors(_admin: dict = Depends(require_admin)):
     return {"contractors": await civic_repo.list_all("contractors")}
 
 
@@ -45,6 +49,7 @@ async def approve_contractor(contractor_id: str, payload: ContractorApproval, _a
         "verified": payload.approved, "available": payload.approved,
         "approval_status": "Approved" if payload.approved else "Rejected",
         "trust_score": 70 if payload.approved else 30,
+        "payout_account_id": payload.payout_account_id or contractor.get("payout_account_id"),
     })
 
 

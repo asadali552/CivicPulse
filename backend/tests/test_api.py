@@ -428,7 +428,7 @@ def test_community_repair_escrow_requires_proof(monkeypatch):
         approved = client.patch(f"/api/repair-requests/{request_id}/decision", headers=admin_headers, json={
             "approved": True, "approved_budget": 12000,
         })
-        assert approved.json()["funds_status"] == "Demo Budget Reserved"
+        assert approved.json()["funds_status"] == "Budget Reserved"
 
         relogin = client.post("/api/auth/login", json={"email": "ali@example.com", "password": "strong-pass-123"})
         youth_headers = {"X-CSRF-Token": relogin.json()["csrf_token"]}
@@ -441,7 +441,9 @@ def test_community_repair_escrow_requires_proof(monkeypatch):
         admin_headers = admin_login(client)
         released = client.post(f"/api/repair-requests/{request_id}/release-funds", headers=admin_headers)
         assert released.status_code == 200
-        assert released.json()["funds_status"] == "Payment Approved (Demo)"
+        assert released.json()["funds_status"] == "Released"
+        assert released.json()["payment_provider"] == "demo"
+        assert released.json()["payment_reference"].startswith("demo-")
         assert civic_repo.memory["complaints"][0]["status"] == "Resolved"
         approvals = civic_repo.memory["complaints"][0]["resolution_approvals"]
         assert approvals == {"contractor": True, "government": True}

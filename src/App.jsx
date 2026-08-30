@@ -1,27 +1,7 @@
-    const { useState, useEffect, useRef } = React;
-    const API_BASE = window.CIVICPULSE_API_BASE || '/api';
-
-    async function api(path, options = {}) {
-      const method = (options.method || 'GET').toUpperCase();
-      const response = await fetch(`${API_BASE}${path}`, {
-        credentials: 'same-origin',
-        ...options,
-        headers: {
-          ...(options.headers || {}),
-          ...(!['GET','HEAD','OPTIONS'].includes(method) && window.CIVICPULSE_CSRF ? {'X-CSRF-Token': window.CIVICPULSE_CSRF} : {})
-        }
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const detail = Array.isArray(body.detail)
-          ? body.detail.map(item => item.msg || item.message || String(item)).join(' · ')
-          : body.detail;
-        const error = new Error(detail || `Request failed (${response.status})`);
-        error.status = response.status;
-        throw error;
-      }
-      return body;
-    }
+import React, { useEffect, useRef, useState } from 'react';
+import { api } from './lib/api.js';
+import Icon from './components/Icon.jsx';
+import ReviewDialog from './components/ReviewDialog.jsx';
 
     const absoluteMediaUrl = (url) => {
       if (!url || url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return url;
@@ -71,7 +51,7 @@
       return { color: '#eab308', label: `${report.severity || 'Moderate'} unresolved problem` };
     };
 
-    function AuthorityMap({ reports, onSelect }) {
+    function AuthorityMap({ reports, onSelect, useClusters = false }) {
       const mapNode = useRef(null);
       const mapInstance = useRef(null);
       useEffect(() => {
@@ -91,7 +71,8 @@
         window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
         }).addTo(map);
-        located.forEach(report => {
+        const markerLayer = window.L.layerGroup().addTo(map);
+        const renderReports = () => located.forEach(report => {
           const state = markerState(report);
           const color = state.color;
           const marker = window.L.circleMarker([report.coordinates.lat, report.coordinates.lng], {
@@ -100,7 +81,7 @@
             fillColor: color,
             fillOpacity: 0.85,
             weight: 2
-          }).addTo(map);
+          }).addTo(markerLayer);
           marker.bindPopup(`
             <div class="p-1 space-y-1.5 font-sans">
               <div class="flex items-center justify-between gap-2 border-b border-slate-700/60 pb-1">
@@ -115,10 +96,30 @@
             </div>
           `).on('click', () => onSelect(report));
         });
+        const renderClusters = async () => {
+          const bounds = map.getBounds();
+          try {
+            const result = await api(`/complaints/map/clusters?west=${bounds.getWest()}&south=${bounds.getSouth()}&east=${bounds.getEast()}&north=${bounds.getNorth()}&zoom=${map.getZoom()}`);
+            markerLayer.clearLayers();
+            result.clusters.forEach(cluster => {
+              const urgent = cluster.critical_count > 0;
+              const marker = window.L.circleMarker([cluster.latitude, cluster.longitude], {radius: Math.min(9 + Math.log2(cluster.count + 1) * 4, 26), color: urgent ? '#ef4444' : '#0ea5e9', fillColor: urgent ? '#ef4444' : '#0ea5e9', fillOpacity:.82, weight:2}).addTo(markerLayer);
+              marker.bindTooltip(String(cluster.count), {permanent:true, direction:'center', className:'cluster-count'});
+              marker.on('click', async () => {
+                if (cluster.count > 1) return map.setView([cluster.latitude, cluster.longitude], Math.min(map.getZoom() + 2, 19));
+                if (cluster.complaint_id) {
+                  const complaint = normalizeReport(await api(`/complaints/${cluster.complaint_id}`));
+                  onSelect(complaint);
+                }
+              });
+            });
+          } catch (_) { markerLayer.clearLayers(); renderReports(); }
+        };
+        if (useClusters) { map.on('moveend', renderClusters); renderClusters(); } else renderReports();
         if (located.length > 1) map.fitBounds(located.map(r => [r.coordinates.lat, r.coordinates.lng]), { padding: [40, 40] });
         mapInstance.current = map;
         return () => { map.remove(); mapInstance.current = null; };
-      }, [reports]);
+      }, [reports, useClusters]);
       return <div ref={mapNode} className="h-[460px] w-full rounded-2xl overflow-hidden border border-slate-800/80 shadow-2xl bg-civic-obsidian" />;
     }
 
@@ -161,22 +162,6 @@
       );
     }
 
-    // --- ICON HELPER COMPONENT FOR LUCIDE CDN ---
-    const Icon = ({ name, className = "w-5 h-5", ...props }) => {
-      const iconRef = useRef(null);
-      useEffect(() => {
-        if (window.lucide?.icons && iconRef.current) {
-          const key = name.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
-          const definition = window.lucide.icons[key];
-          if (definition && window.lucide.createElement) {
-            const svg = window.lucide.createElement(definition);
-            svg.setAttribute('class', className);
-            iconRef.current.replaceChildren(svg);
-          }
-        }
-      }, [name, className]);
-      return <span ref={iconRef} className={`inline-flex items-center justify-center ${className}`} aria-hidden="true" {...props}></span>;
-    };
 
     // --- MOCK DATABASE ---
     const INITIAL_REPORTS = [
@@ -277,6 +262,7 @@
             <>
               <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Full name" autoComplete="name" className="w-full glass-input rounded-xl p-3 text-sm focus:outline-none"/>
               <input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="Phone number (optional)" autoComplete="tel" className="w-full glass-input rounded-xl p-3 text-sm focus:outline-none"/>
+              <input value={form.payoutAccount || ''} onChange={e=>setForm({...form,payoutAccount:e.target.value})} placeholder="Stripe Connect account for payments (acct_…)" className="w-full glass-input rounded-xl p-3 text-sm focus:outline-none"/>
             </>
           )}
           <input type={allowRegister?'email':'text'} value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder={allowRegister ? 'Email address' : 'Admin username'} autoComplete="username" className="w-full glass-input rounded-xl p-3 text-sm focus:outline-none"/>
@@ -302,10 +288,11 @@
     }
 
     // --- MAIN APP COMPONENT ---
-    function App() {
+    export default function App() {
       const [activeTab, setActiveTab] = useState('landing');
       const [darkMode, setDarkMode] = useState(() => localStorage.getItem('civicpulse-theme') !== 'light');
       const [reports, setReports] = useState(INITIAL_REPORTS);
+      const [reportsTruncated, setReportsTruncated] = useState(false);
       const [selectedReport, setSelectedReport] = useState(INITIAL_REPORTS[0]);
       
       // Before/After Slider
@@ -331,12 +318,14 @@
       const [contractorJobs, setContractorJobs] = useState([]);
       const [contractorProfile, setContractorProfile] = useState(null);
       const [contractors, setContractors] = useState([]);
-      const [contractorForm, setContractorForm] = useState({service_area:'',skills:''});
+      const [contractorForm, setContractorForm] = useState({service_area:'',skills:'',payout_account_id:''});
       const [contractorProofs, setContractorProofs] = useState({});
+      const [reviewReport, setReviewReport] = useState(null);
+      const [reviewBusy, setReviewBusy] = useState(false);
       const [fundingBudgets, setFundingBudgets] = useState({});
       const [authUser, setAuthUser] = useState(null);
       const [authMode, setAuthMode] = useState('login');
-      const [authForm, setAuthForm] = useState({name:'',email:'',password:'',confirmPassword:'',phone:''});
+      const [authForm, setAuthForm] = useState({name:'',email:'',password:'',confirmPassword:'',phone:'',payoutAccount:''});
       const [authBusy, setAuthBusy] = useState(false);
       const [authError, setAuthError] = useState('');
       const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -406,6 +395,7 @@
         try {
           const complaintData = await api('/complaints');
           const liveReports = complaintData.complaints.map(normalizeReport);
+          setReportsTruncated(Boolean(complaintData.pagination?.has_more));
           setReports(liveReports);
           setApiOnline(true);
           setSelectedReport(current => liveReports.find(report => report.id === current?.id) || liveReports[0] || null);
@@ -440,9 +430,9 @@
         setAuthBusy(true);
         try {
           const path = selectedMode === 'register' ? '/auth/register' : '/auth/login';
-          const payload = selectedMode === 'register' ? {name:authForm.name.trim(),email:authForm.email.trim(),password:authForm.password,phone:authForm.phone.trim()} : {email:authForm.email.trim(),password:authForm.password};
+          const payload = selectedMode === 'register' ? {name:authForm.name.trim(),email:authForm.email.trim(),password:authForm.password,phone:authForm.phone.trim(),payout_account_id:authForm.payoutAccount.trim()} : {email:authForm.email.trim(),password:authForm.password};
           const user = await api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-          window.CIVICPULSE_CSRF = user.csrf_token; setAuthUser(user); setAuthForm({name:'',email:'',password:'',confirmPassword:'',phone:''});
+          window.CIVICPULSE_CSRF = user.csrf_token; setAuthUser(user); setAuthForm({name:'',email:'',password:'',confirmPassword:'',phone:'',payoutAccount:''});
           await refreshData(user); showToast(`Welcome, ${user.name}.`);
         } catch (error) { setAuthError(error.message); showToast(error.message); }
         finally { setAuthBusy(false); }
@@ -453,7 +443,7 @@
         setAuthBusy(true); setAuthError(''); authVersionRef.current += 1;
         try {
           const registering = authMode === 'register';
-          const payload = registering ? {name:authForm.name.trim(),email:authForm.email.trim(),password:authForm.password,phone:authForm.phone.trim(),account_type:'contractor',service_area:contractorForm.service_area.trim(),skills:contractorForm.skills.split(',').map(v=>v.trim()).filter(Boolean)} : {email:authForm.email.trim(),password:authForm.password};
+          const payload = registering ? {name:authForm.name.trim(),email:authForm.email.trim(),password:authForm.password,phone:authForm.phone.trim(),account_type:'contractor',service_area:contractorForm.service_area.trim(),skills:contractorForm.skills.split(',').map(v=>v.trim()).filter(Boolean),payout_account_id:contractorForm.payout_account_id.trim()} : {email:authForm.email.trim(),password:authForm.password};
           const user = await api(registering ? '/auth/register' : '/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
           if (user.role !== 'contractor') throw new Error('Use a registered contractor account.');
           window.CIVICPULSE_CSRF=user.csrf_token; setAuthUser(user); await refreshData(user); showToast(`Welcome, ${user.name}.`);
@@ -476,13 +466,14 @@
         catch(error) { showToast(error.message); }
       };
 
-      const confirmHumanReview = async report => {
-        const reason = window.prompt('Officer review note', 'AI classification checked against the citizen evidence.');
-        if (!reason?.trim()) return;
+      const confirmHumanReview = async form => {
+        if (!reviewReport) return;
+        setReviewBusy(true);
         try {
-          const updated = await api(`/complaints/${report.id}/override`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({reason:reason.trim()})});
-          setSelectedReport(normalizeReport(updated)); await refreshData(authUser); showToast(`${report.id} reviewed and ready for assignment.`);
+          const updated = await api(`/complaints/${reviewReport.id}/override`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({final_category:form.category,final_severity:form.severity,final_department:form.department.trim(),reason:form.reason.trim()})});
+          setSelectedReport(normalizeReport(updated)); setReviewReport(null); await refreshData(authUser); showToast(`${reviewReport.id} reviewed and ready for assignment.`);
         } catch (error) { showToast(error.message); }
+        finally { setReviewBusy(false); }
       };
 
       const approveContractor = async (contractor, approved) => {
@@ -1728,11 +1719,12 @@
                   <AuthorityMap
                     reports={reports.filter(rep => mapFilter === 'All' || (mapFilter === 'Roads' && /road/i.test(rep.category)) || (mapFilter === 'Sanitation' && /waste|sanitation/i.test(rep.category)) || (mapFilter === 'Water' && /water|drain|sewer/i.test(rep.category)))}
                     onSelect={report => { setSelectedReport(report); setActiveTab('track'); }}
+                    useClusters={reportsTruncated}
                   />
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-2 text-[11px] font-mono">
                     <div className="glass-card p-2.5 rounded-xl border border-slate-800 flex items-center gap-2 text-slate-300">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-glow-emerald" /> 
-                      <span>All 3 Approved (Verified)</span>
+                      <span>Contractor + authority verified</span>
                     </div>
                     <div className="glass-card p-2.5 rounded-xl border border-slate-800 flex items-center gap-2 text-slate-300">
                       <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shadow-glow-sky" /> 
@@ -1924,6 +1916,7 @@
                         <input value={authForm.phone} onChange={e => setAuthForm({...authForm, phone: e.target.value})} placeholder="Phone number" className="w-full glass-input rounded-xl p-3 text-xs sm:text-sm text-white" />
                         <input value={contractorForm.service_area} onChange={e => setContractorForm({...contractorForm, service_area: e.target.value})} placeholder="Service area (e.g. Zone 4)" className="w-full glass-input rounded-xl p-3 text-xs sm:text-sm text-white" />
                         <input value={contractorForm.skills} onChange={e => setContractorForm({...contractorForm, skills: e.target.value})} placeholder="Skills (Roads, Asphalt, Plumbing, Electrical)" className="w-full glass-input rounded-xl p-3 text-xs sm:text-sm text-white" />
+                        <input value={contractorForm.payout_account_id} onChange={e => setContractorForm({...contractorForm, payout_account_id: e.target.value})} placeholder="Stripe Connect account (acct_…)" className="w-full glass-input rounded-xl p-3 text-xs sm:text-sm text-white" />
                       </>
                     )}
                     <input type="password" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} placeholder="Password" className="w-full glass-input rounded-xl p-3 text-xs sm:text-sm text-white" />
@@ -2169,7 +2162,7 @@
                         <h2 className="text-sm font-bold text-white font-mono uppercase tracking-wider">Filtered Incident Telemetry Map</h2>
                         <span className="text-xs font-mono text-slate-400">{filteredAdminReports.filter(r => Number.isFinite(r.coordinates?.lat)).length} mapped coordinates</span>
                       </div>
-                      <AuthorityMap reports={filteredAdminReports} onSelect={report => { setSelectedReport(report); showToast(`${report.id}: ${report.status}`); }} />
+                      <AuthorityMap reports={filteredAdminReports} useClusters={reportsTruncated} onSelect={report => { setSelectedReport(report); showToast(`${report.id}: ${report.status}`); }} />
                     </div>
                   )}
 
@@ -2428,7 +2421,7 @@
                                 </td>
                                 <td className="p-4 text-right">
                                   <div className="flex justify-end gap-2">
-                                    {(item.needs_review || item.status === 'Needs Review') && <button onClick={() => confirmHumanReview(item)} className="px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/35 text-amber-300 font-semibold text-xs">Review AI</button>}
+                                    {(item.needs_review || item.status === 'Needs Review') && <button onClick={() => setReviewReport(item)} className="px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/35 text-amber-300 font-semibold text-xs">Review AI</button>}
                                     <button
                                       disabled={!nextOperationalStatus(item) || item.needs_review || item.status === 'Needs Review'}
                                       onClick={() => nextOperationalStatus(item) && updateStatus(item, nextOperationalStatus(item))}
@@ -2474,10 +2467,7 @@
               </div>
             </div>
           </footer>
+          <ReviewDialog report={reviewReport} busy={reviewBusy} onClose={() => !reviewBusy && setReviewReport(null)} onConfirm={confirmHumanReview} />
         </div>
       );
     }
-
-    // MOUNT REACT APPLICATION
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);

@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   color-scheme: dark;
   --bg-primary: #070A11;
@@ -308,6 +312,16 @@ select:focus-visible {
   line-height: 1.5 !important;
   font-size: 12px !important;
 }
+
+.cluster-count {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: white !important;
+  font: 700 11px/1 Inter, system-ui, sans-serif !important;
+}
+
+.cluster-count::before { display: none !important; }
 
 /* High-Contrast Executive Light Mode Theme Overrides */
 html:not(.dark) {

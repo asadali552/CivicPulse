@@ -22,6 +22,7 @@ class RegisterCreate(BaseModel):
     account_type: str = Field(default="youth", pattern="^(youth|contractor)$")
     service_area: str = Field(default="", max_length=160)
     skills: list[str] = Field(default_factory=list, max_length=20)
+    payout_account_id: str = Field(default="", max_length=120)
 
 
 class LoginCreate(BaseModel):
@@ -73,6 +74,7 @@ async def register(payload: RegisterCreate, request: Request, response: Response
         "user_id": public_id("USR"), "name": payload.name.strip(), "email": email,
         "phone": payload.phone.strip(), "role": payload.account_type, "password_salt": salt,
         "password_hash": password_hash, "created_at": now_utc(), "updated_at": now_utc(),
+        "payout_account_id": payload.payout_account_id.strip() or None,
     }
     await civic_repo.insert_one("users", user)
     if payload.account_type == "contractor":
@@ -82,6 +84,7 @@ async def register(payload: RegisterCreate, request: Request, response: Response
             "skills": [skill.strip() for skill in payload.skills if skill.strip()], "rating": 0,
             "rating_count": 0, "completed_jobs": 0, "distance_km": 0, "verified": False,
             "available": False, "trust_score": 45, "approval_status": "Pending Approval",
+            "payout_account_id": payload.payout_account_id.strip() or None,
         })
     token, session = await create_session(user)
     clear_failed_attempts(request)

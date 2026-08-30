@@ -12,9 +12,9 @@ AI-powered smart civic governance and decision-support platform for hackathon de
 6. Admin can send a controlled small repair offer to verified local contractors.
 7. Citizen tracks progress using a public complaint ID.
 8. A registered community account can propose explicitly eligible low-risk micro-maintenance; the proposal remains linked to that account across logout/login.
-9. Admin records a demo budget reservation, the community worker uploads an after-repair photo, and admin verifies proof before recording payment approval.
+9. Admin reserves a budget, the worker submits completion evidence, and authority approval releases payment through the configured provider.
 
-The community workflow is restricted to explicitly recognized, low-risk cleanup and beautification tasks. Budget and payment states are demonstrations unless a real payment provider is integrated.
+The community workflow is restricted to explicitly recognized, low-risk cleanup and beautification tasks. Local development uses an explicitly labelled demo payment adapter; production refuses to start unless Stripe is configured.
 
 ## Accountability and Safety
 
@@ -28,9 +28,9 @@ The community workflow is restricted to explicitly recognized, low-risk cleanup 
 
 ## Current State
 
-- `index.html` is a polished UI served by FastAPI at `/` and can also run standalone.
+- The React UI is compiled by Vite and served by FastAPI at `/`; it has no runtime Babel, Tailwind, icon, map, or font CDN dependency.
 - `backend/` contains a FastAPI API with MongoDB-ready repository and in-memory fallback.
-- Contractor matching, offer dispatch, proof workflow, dashboard analytics, and tracking APIs are scaffolded.
+- Contractor matching, guarded offer state transitions, public Drive proof verification, authority review, provider-backed payment release, clustered maps, and tracking APIs are implemented.
 - Public problems remain visible on the civic map, while community proposals, contact details, and funding actions are private to the owner and administrator.
 - Authentication uses HttpOnly sessions, CSRF tokens, salted PBKDF2 password hashes, login throttling, and role-based API authorization.
 
@@ -57,22 +57,27 @@ The backend uses MongoDB if `MONGO_URI` works. If MongoDB is unavailable, it aut
 
 For local development, `ALLOW_MEMORY_FALLBACK=true` prevents a temporary Atlas or DNS outage from stopping the server. Data created in fallback mode is not persistent. Production keeps fallback disabled and should configure the deployment IP in MongoDB Atlas Network Access.
 
-## Frontend
+## Frontend development
 
-Run the full application:
+Install and compile the frontend:
 
 ```bash
-./scripts/run_backend.sh
+npm install
+npm run dev
 ```
 
-Then open `http://127.0.0.1:8000/`. The frontend automatically uses the same-origin `/api` URL when deployed.
+Vite proxies `/api` and `/uploads` to FastAPI on port 8000. For the production-shaped local application, run `npm run build` and then `./scripts/run_backend.sh`; FastAPI serves the generated `dist/` bundle.
 
 ## Tests
 
 ```bash
-cd backend
-./.venv/bin/pytest -q
+npm test
+npm run test:e2e
+backend/.venv/bin/pytest -q backend/tests
+npm run build
 ```
+
+The Playwright suite checks both desktop and 390px mobile layouts. Run `npx playwright install chromium` once on a new machine.
 
 ## Deploy
 
@@ -80,7 +85,7 @@ cd backend
 
 Import the repository into Vercel with the repository root as the project root. Do not select `backend/` as the Root Directory. Vercel uses the root `index.py` entry point, serves the frontend at `/`, and serves FastAPI at `/api` on the same domain.
 
-Bundled frontend assets live under `public/assets/`, which Vercel serves through its CDN. Complaint and repair evidence is uploaded to Cloudinary in production; files under local `data/uploads/` are intentionally ignored and are not deployed.
+Vercel runs the Vite build and serves hashed assets from `dist/build`. Complaint and repair evidence is uploaded to Cloudinary in production; files under local `data/uploads/` are intentionally ignored and are not deployed.
 
 Add these Production environment variables in **Project Settings → Environment Variables**:
 
@@ -99,6 +104,8 @@ CLOUDINARY_API_SECRET=<Cloudinary API secret>
 MAX_UPLOAD_MB=4
 GEMINI_API_KEY=<optional Gemini API key>
 GEMINI_MODEL=gemini-3.5-flash-lite
+PAYMENT_PROVIDER=stripe
+STRIPE_SECRET_KEY=<Stripe secret key>
 ```
 
 After deploying, set `PUBLIC_BASE_URL` to the production URL, such as `https://civicpulse.example.com`, and redeploy. The frontend uses same-origin `/api`, so a separate API URL or CORS configuration is not required.
@@ -114,3 +121,10 @@ curl https://your-domain.vercel.app/api/health
 ```
 
 The repository also retains `Dockerfile` and `render.yaml` for container-based deployment on Render.
+
+## Production guarantees and boundaries
+
+- Contractor proof requires both an image and a Google Drive/Docs report. CivicPulse performs a server-side anonymous access check and records the result before accepting proof. Google can still change sharing permissions later; production monitoring can periodically re-check unresolved evidence.
+- Stripe Connect transfers use one idempotency key per work order, so a retry cannot intentionally release the same payment twice. Recipients need a stored Connect account ID.
+- Complaint, assignment, proof, decision, and audit writes use repository transactions. MongoDB production must run on Atlas or another replica set that supports transactions.
+- Map clients request server-side bounding-box clusters rather than loading the entire complaint collection.

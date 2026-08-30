@@ -1,9 +1,6 @@
-const CACHE = 'civicpulse-v2';
+const CACHE = 'civicpulse-v3';
 const CORE = [
   '/',
-  '/assets/css/styles.css',
-  '/assets/js/tailwind-config.js',
-  '/assets/js/app.jsx',
   '/assets/js/register-service-worker.js',
   '/assets/favicon.svg',
   '/assets/manifest.webmanifest',

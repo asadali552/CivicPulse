@@ -14,6 +14,20 @@ async def dashboard_overview(_admin: dict = Depends(require_admin)):
     complaints = await civic_repo.list_all("complaints")
     offers = await civic_repo.list_all("offers")
     stats = build_dashboard_stats(complaints, offers)
+    aggregate = await civic_repo.aggregate_complaint_counts()
+    if aggregate:
+        totals = aggregate["totals"]
+        stats.update({
+            "active_issues": totals.get("active", 0),
+            "critical_queue": totals.get("critical", 0),
+            "critical_count": totals.get("critical", 0),
+            "needs_review": totals.get("needs_review", 0),
+            "offers_sent": aggregate["offers_sent"],
+            "resolution_rate": round(totals.get("resolved", 0) / max(totals.get("total", 0), 1) * 100),
+            "category_counts": aggregate["categories"],
+            "severity_counts": aggregate["severities"],
+            "top_category": max(aggregate["categories"], key=aggregate["categories"].get) if aggregate["categories"] else "None",
+        })
     insight = await generate_governance_insight(stats)
     return {
         "stats": stats,

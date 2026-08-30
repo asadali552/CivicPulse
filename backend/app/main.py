@@ -14,6 +14,8 @@ from app.db.repository import civic_repo
 
 PROJECT_ROOT = project_root()
 STATIC_ASSET_DIR = PROJECT_ROOT / "public" / "assets"
+BUILT_FRONTEND_DIR = PROJECT_ROOT / "dist"
+BUILT_ASSET_DIR = BUILT_FRONTEND_DIR / "build"
 UPLOAD_DIR = upload_directory()
 LOCAL_UPLOADS_ENABLED = settings.environment != "production"
 if LOCAL_UPLOADS_ENABLED:
@@ -95,6 +97,8 @@ if STATIC_ASSET_DIR.exists():
         StaticFiles(directory=STATIC_ASSET_DIR),
         name="assets"
     )
+if BUILT_ASSET_DIR.exists():
+    app.mount("/build", StaticFiles(directory=BUILT_ASSET_DIR), name="frontend-build")
 
 
 @app.get("/api", include_in_schema=False)
@@ -105,7 +109,8 @@ async def api_root():
 @app.get("/", include_in_schema=False)
 async def frontend(request: Request):
     base = settings.public_base_url.rstrip("/") or str(request.base_url).rstrip("/")
-    html = (PROJECT_ROOT / "index.html").read_text(encoding="utf-8").replace("__PUBLIC_BASE_URL__", base)
+    frontend_file = BUILT_FRONTEND_DIR / "index.html" if (BUILT_FRONTEND_DIR / "index.html").exists() else PROJECT_ROOT / "index.html"
+    html = frontend_file.read_text(encoding="utf-8").replace("__PUBLIC_BASE_URL__", base)
     return HTMLResponse(html)
 
 

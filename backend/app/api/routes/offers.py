@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from app.core.security import require_admin, require_user
 
 from app.db.repository import civic_repo, now_utc, public_id
 from app.schemas.offer import OfferCreate, OfferStatusUpdate
 from app.services.audit import record_audit_event
+from app.services.drive_verification import verify_public_drive_access
+from app.services.payments import release_contractor_payment
 from app.services.storage.cloudinary import store_upload
 
 router = APIRouter(prefix="/api/offers", tags=["offers"])
@@ -43,11 +47,10 @@ async def submit_work_proof(
         raise HTTPException(status_code=403, detail="This work order is not assigned to your account")
     if offer.get("status") != "In Progress":
         raise HTTPException(status_code=409, detail="Proof can only be submitted for work currently in progress")
-    normalized_report_url = report_url.strip()
-    if not normalized_report_url.startswith(("https://drive.google.com/", "https://docs.google.com/")):
-        raise HTTPException(status_code=422, detail="Submit a Google Drive or Google Docs report link")
     if not public_access_confirmed:
         raise HTTPException(status_code=422, detail="Confirm that anyone with the link can view the Drive report")
+    drive_verification = await verify_public_drive_access(report_url)
+    normalized_report_url = drive_verification["url"]
     complaint = await civic_repo.find_one("complaints", "complaint_id", offer["complaint_id"])
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
@@ -59,16 +62,18 @@ async def submit_work_proof(
     approvals["contractor"] = True
     history = list(complaint.get("status_history", []))
     history.append({"status": "Evidence Uploaded", "note": note, "at": timestamp, "actor_id": user.get("user_id"), "actor_role": "contractor"})
-    evidence = {"after_image_url": image_url, "report_url": normalized_report_url, "report_access": "Public - anyone with the link", "completion_note": note, "uploaded_by": offer.get("contractor_name"), "uploaded_at": timestamp}
-    await civic_repo.update_one("offers", "offer_id", offer_id, {
-        "status": "Proof Submitted", "note": note, "after_image_url": image_url,
-        "report_url": normalized_report_url, "report_access": "Public - anyone with the link", "proof_submitted_at": timestamp, "updated_at": timestamp,
-    })
-    await civic_repo.update_one("complaints", "complaint_id", offer["complaint_id"], {
-        "status": "Evidence Uploaded", "resolution_evidence": evidence,
-        "resolution_approvals": approvals, "status_history": history, "updated_at": timestamp,
-    })
-    await record_audit_event("offer", offer_id, "proof_submitted", user, {"status": "In Progress"}, {"status": "Proof Submitted", "report_url": normalized_report_url, "report_access": "public-confirmed"}, note)
+    evidence = {"after_image_url": image_url, "report_url": normalized_report_url, "report_access": "Verified public", "drive_verification": drive_verification, "completion_note": note, "uploaded_by": offer.get("contractor_name"), "uploaded_at": timestamp}
+    async with civic_repo.transaction() as session:
+        await civic_repo.update_one("offers", "offer_id", offer_id, {
+            "status": "Proof Submitted", "note": note, "after_image_url": image_url,
+            "report_url": normalized_report_url, "report_access": "Verified public", "drive_verification": drive_verification,
+            "proof_submitted_at": timestamp, "updated_at": timestamp,
+        }, session=session)
+        await civic_repo.update_one("complaints", "complaint_id", offer["complaint_id"], {
+            "status": "Evidence Uploaded", "resolution_evidence": evidence,
+            "resolution_approvals": approvals, "status_history": history, "updated_at": timestamp,
+        }, session=session)
+        await record_audit_event("offer", offer_id, "proof_submitted", user, {"status": "In Progress"}, {"status": "Proof Submitted", "report_url": normalized_report_url, "report_access": "verified-public"}, note, session=session)
     return {"offer_id": offer_id, "status": "Proof Submitted", "resolution_evidence": evidence}
 
 
@@ -125,14 +130,10 @@ async def create_offer(payload: OfferCreate, _admin: dict = Depends(require_admi
         "note": f"Offer sent to {contractor['name']} for {work_location.get('area') or 'reported location'}.",
         "at": timestamp,
     })
-    await civic_repo.update_one(
-        "complaints",
-        "complaint_id",
-        payload.complaint_id,
-        {"status": "Contractor Offer Sent", "status_history": history},
-    )
-    created = await civic_repo.insert_one("offers", offer)
-    await record_audit_event("offer", created["offer_id"], "created", _admin, after={"complaint_id": payload.complaint_id, "contractor_id": payload.contractor_id, "budget_cap": payload.budget_cap})
+    async with civic_repo.transaction() as session:
+        await civic_repo.update_one("complaints", "complaint_id", payload.complaint_id, {"status": "Contractor Offer Sent", "status_history": history}, session=session)
+        created = await civic_repo.insert_one("offers", offer, session=session)
+        await record_audit_event("offer", created["offer_id"], "created", _admin, after={"complaint_id": payload.complaint_id, "contractor_id": payload.contractor_id, "budget_cap": payload.budget_cap}, session=session)
     return created
 
 
@@ -165,6 +166,10 @@ async def update_offer_status(offer_id: str, payload: OfferStatusUpdate, user: d
         complaint = await civic_repo.find_one("complaints", "complaint_id", offer["complaint_id"])
         if not complaint or not complaint.get("resolution_evidence"):
             raise HTTPException(status_code=409, detail="Stored completion evidence is required before approving contractor work")
+        contractor = await civic_repo.find_one("contractors", "contractor_id", offer["contractor_id"])
+        if not contractor:
+            raise HTTPException(status_code=409, detail="Assigned contractor record is unavailable")
+        payment = await release_contractor_payment(offer, contractor)
     offer_changes = {"status": payload.status, "note": payload.note, "updated_at": now_utc()}
     if offer.get("status") == "Proof Submitted" and payload.status == "In Progress":
         offer_changes.update({"after_image_url": None, "report_url": None, "report_access": None, "proof_submitted_at": None})
@@ -173,35 +178,36 @@ async def update_offer_status(offer_id: str, payload: OfferStatusUpdate, user: d
             "payment_status": "Released",
             "payment_amount": offer.get("budget_cap"),
             "payment_released_at": now_utc(),
+            "payment_provider": payment.provider,
+            "payment_reference": payment.reference,
             "approved_by": user.get("user_id"),
         })
-    updated = await civic_repo.update_one("offers", "offer_id", offer_id, offer_changes)
-    complaint = await civic_repo.find_one("complaints", "complaint_id", offer["complaint_id"])
-    if complaint and payload.status in {"Accepted", "In Progress", "Rejected"}:
-        other_active = [item for item in await civic_repo.list_all("offers") if item.get("complaint_id") == offer["complaint_id"] and item.get("offer_id") != offer_id and item.get("status") in {"Sent", "Accepted", "In Progress", "Proof Submitted"}]
-        complaint_status = {"Accepted": "Assigned", "In Progress": "In Progress", "Rejected": complaint.get("status") if other_active else "Submitted"}[payload.status]
-        history = complaint.get("status_history", [])
-        history.append({"status": f"Contractor {payload.status}", "note": payload.note or f"Offer {offer_id} was {payload.status.lower()}.", "at": now_utc()})
-        complaint_changes = {
-            "status": complaint_status,
-            "assigned_contractor_id": offer.get("contractor_id") if payload.status != "Rejected" else None,
-            "assigned_contractor_name": offer.get("contractor_name") if payload.status != "Rejected" else None,
-            "status_history": history,
-        }
-        if offer.get("status") == "Proof Submitted" and payload.status == "In Progress":
+    async with civic_repo.transaction() as session:
+        updated = await civic_repo.update_one("offers", "offer_id", offer_id, offer_changes, session=session)
+        complaint = await civic_repo.find_one("complaints", "complaint_id", offer["complaint_id"])
+        complaint_changes = None
+        if complaint and payload.status in {"Accepted", "In Progress", "Rejected"}:
+            other_active = [item for item in await civic_repo.list_all("offers") if item.get("complaint_id") == offer["complaint_id"] and item.get("offer_id") != offer_id and item.get("status") in {"Sent", "Accepted", "In Progress", "Proof Submitted"}]
+            complaint_status = {"Accepted": "Assigned", "In Progress": "In Progress", "Rejected": complaint.get("status") if other_active else "Submitted"}[payload.status]
+            history = complaint.get("status_history", [])
+            history.append({"status": f"Contractor {payload.status}", "note": payload.note or f"Offer {offer_id} was {payload.status.lower()}.", "at": now_utc()})
+            complaint_changes = {
+                "status": complaint_status,
+                "assigned_contractor_id": offer.get("contractor_id") if payload.status != "Rejected" else None,
+                "assigned_contractor_name": offer.get("contractor_name") if payload.status != "Rejected" else None,
+                "status_history": history,
+            }
+            if offer.get("status") == "Proof Submitted" and payload.status == "In Progress":
+                approvals = dict(complaint.get("resolution_approvals") or {})
+                approvals["contractor"] = False
+                complaint_changes.update({"resolution_evidence": None, "resolution_approvals": approvals})
+        elif complaint and payload.status == "Approved":
             approvals = dict(complaint.get("resolution_approvals") or {})
-            approvals["contractor"] = False
-            complaint_changes.update({"resolution_evidence": None, "resolution_approvals": approvals})
-        await civic_repo.update_one("complaints", "complaint_id", offer["complaint_id"], complaint_changes)
-    elif complaint and payload.status == "Approved":
-        approvals = dict(complaint.get("resolution_approvals") or {})
-        approvals["government"] = True
-        history = list(complaint.get("status_history", []))
-        history.append({"status": "Resolved", "note": payload.note or "Authority approved the final review and released contractor payment.", "at": now_utc(), "actor_id": user.get("user_id"), "actor_role": "admin"})
-        await civic_repo.update_one("complaints", "complaint_id", offer["complaint_id"], {
-            "status": "Resolved", "resolution_approvals": approvals,
-            "fully_verified": all(approvals.get(key) for key in ("contractor", "government")),
-            "resolved_at": now_utc(), "status_history": history, "updated_at": now_utc(),
-        })
-    await record_audit_event("offer", offer_id, "status_transition", user, {"status": offer.get("status")}, {"status": payload.status}, payload.note)
+            approvals["government"] = True
+            history = list(complaint.get("status_history", []))
+            history.append({"status": "Resolved", "note": payload.note or "Authority approved the final review and released contractor payment.", "at": now_utc(), "actor_id": user.get("user_id"), "actor_role": "admin"})
+            complaint_changes = {"status": "Resolved", "resolution_approvals": approvals, "fully_verified": all(approvals.get(key) for key in ("contractor", "government")), "resolved_at": now_utc(), "status_history": history, "updated_at": now_utc()}
+        if complaint_changes:
+            await civic_repo.update_one("complaints", "complaint_id", offer["complaint_id"], complaint_changes, session=session)
+        await record_audit_event("offer", offer_id, "status_transition", user, {"status": offer.get("status")}, {"status": payload.status, "payment_reference": getattr(locals().get("payment"), "reference", None)}, payload.note, session=session)
     return updated

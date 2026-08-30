@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     cloudinary_api_key: str = ""
     cloudinary_api_secret: str = ""
     cloudinary_url: str = ""
+    payment_provider: str = "demo"
+    stripe_secret_key: str = ""
     upload_dir: str = ""
     max_upload_mb: int = 10
     max_image_megapixels: int = 30
@@ -65,6 +67,8 @@ class Settings(BaseSettings):
             cloudinary_parts = all((self.cloudinary_cloud_name, self.cloudinary_api_key, self.cloudinary_api_secret))
             if not self.cloudinary_url and not cloudinary_parts:
                 unsafe.append("CLOUDINARY_URL or separate Cloudinary credentials")
+            if self.payment_provider != "stripe" or not self.stripe_secret_key:
+                unsafe.append("PAYMENT_PROVIDER=stripe and STRIPE_SECRET_KEY")
             if unsafe:
                 raise ValueError("Unsafe production configuration: " + ", ".join(unsafe))
         return self

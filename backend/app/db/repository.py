@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import logging
 from uuid import uuid4
@@ -109,6 +110,25 @@ class CivicRepository:
     async def close(self) -> None:
         if self.client:
             self.client.close()
+
+    @asynccontextmanager
+    async def transaction(self):
+        """Atomic unit for related domain and audit writes.
+
+        Memory mode snapshots state for deterministic tests. MongoDB uses a
+        session transaction and therefore requires a replica set/Atlas.
+        """
+        if self.use_memory or self.client is None:
+            snapshot = deepcopy(self.memory)
+            try:
+                yield None
+            except Exception:
+                self.memory = snapshot
+                raise
+            return
+        async with await self.client.start_session() as session:
+            async with session.start_transaction():
+                yield session
 
     async def storage_status(self) -> dict:
         if self.use_memory or self.db is None:
@@ -286,12 +306,70 @@ class CivicRepository:
         cursor = self.db.complaints.find({"location_geo": {"$geoWithin": {"$geometry": polygon}}}).sort("priority_score", -1).limit(limit)
         return [clean_mongo_doc(item) async for item in cursor]
 
-    async def insert_one(self, collection: str, item: dict) -> dict:
+    async def complaint_clusters(self, west: float, south: float, east: float, north: float, zoom: int) -> list[dict]:
+        """Return bounded spatial clusters instead of transferring every marker."""
+        cell = max(0.002, 360 / ((2 ** zoom) * 8))
+        if self.use_memory:
+            groups: dict[tuple[int, int], list[dict]] = {}
+            for item in await self.complaints_in_bbox(west, south, east, north, 100_000):
+                location = item.get("location") or {}
+                lat, lng = location.get("latitude"), location.get("longitude")
+                if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
+                    groups.setdefault((int(lat // cell), int(lng // cell)), []).append(item)
+            return [{
+                "cluster_id": f"{key[0]}:{key[1]}:{zoom}", "latitude": sum(i["location"]["latitude"] for i in items) / len(items),
+                "longitude": sum(i["location"]["longitude"] for i in items) / len(items), "count": len(items),
+                "max_priority": max(i.get("priority_score", 0) for i in items),
+                "critical_count": sum(1 for i in items if i.get("severity") == "Critical"),
+                "complaint_id": items[0].get("complaint_id") if len(items) == 1 else None,
+            } for key, items in groups.items()]
+        polygon = {"type": "Polygon", "coordinates": [[[west, south], [east, south], [east, north], [west, north], [west, south]]]}
+        pipeline = [
+            {"$match": {"location_geo": {"$geoWithin": {"$geometry": polygon}}}},
+            {"$project": {"complaint_id": 1, "priority_score": 1, "severity": 1, "lng": {"$arrayElemAt": ["$location_geo.coordinates", 0]}, "lat": {"$arrayElemAt": ["$location_geo.coordinates", 1]}}},
+            {"$group": {"_id": {"x": {"$floor": {"$divide": ["$lng", cell]}}, "y": {"$floor": {"$divide": ["$lat", cell]}}}, "latitude": {"$avg": "$lat"}, "longitude": {"$avg": "$lng"}, "count": {"$sum": 1}, "max_priority": {"$max": "$priority_score"}, "critical_count": {"$sum": {"$cond": [{"$eq": ["$severity", "Critical"]}, 1, 0]}}, "ids": {"$push": "$complaint_id"}}},
+            {"$limit": 2000},
+        ]
+        rows = [clean_mongo_doc(item) async for item in self.db.complaints.aggregate(pipeline)]
+        return [{"cluster_id": f"{row['_id']['x']}:{row['_id']['y']}:{zoom}", "latitude": row["latitude"], "longitude": row["longitude"], "count": row["count"], "max_priority": row.get("max_priority", 0), "critical_count": row.get("critical_count", 0), "complaint_id": row["ids"][0] if row["count"] == 1 else None} for row in rows]
+
+    async def aggregate_complaint_counts(self) -> dict | None:
+        """Exact server-side counters for high-volume dashboards.
+
+        Detailed latency medians continue to use the bounded operational sample;
+        headline totals and distributions never depend on that sample size.
+        """
+        if self.use_memory:
+            return None
+        facets = {
+            "totals": [{"$group": {
+                "_id": None, "total": {"$sum": 1},
+                "active": {"$sum": {"$cond": [{"$ne": ["$status", "Resolved"]}, 1, 0]}},
+                "resolved": {"$sum": {"$cond": [{"$eq": ["$status", "Resolved"]}, 1, 0]}},
+                "critical": {"$sum": {"$cond": [{"$eq": ["$severity", "Critical"]}, 1, 0]}},
+                "needs_review": {"$sum": {"$cond": ["$needs_review", 1, 0]}},
+                "duplicates": {"$sum": {"$max": [{"$subtract": [{"$ifNull": ["$duplicate_count", 1]}, 1]}, 0]}},
+            }}],
+            "categories": [{"$group": {"_id": {"$ifNull": ["$category", "Other"]}, "count": {"$sum": 1}}}],
+            "severities": [{"$group": {"_id": {"$ifNull": ["$severity", "Medium"]}, "count": {"$sum": 1}}}],
+            "channels": [{"$group": {"_id": {"$ifNull": ["$channel", "Portal"]}, "count": {"$sum": 1}}}],
+            "departments": [{"$match": {"status": {"$ne": "Resolved"}}}, {"$group": {"_id": {"$ifNull": ["$department", "Unassigned"]}, "count": {"$sum": 1}}}, {"$sort": {"count": -1}}],
+            "areas": [{"$group": {"_id": {"$ifNull": ["$location.area", "Unknown"]}, "count": {"$sum": 1}}}, {"$sort": {"count": -1}}, {"$limit": 6}],
+        }
+        rows = await self.db.complaints.aggregate([{"$facet": facets}]).to_list(length=1)
+        row = rows[0] if rows else {}
+        return {
+            "totals": (row.get("totals") or [{}])[0],
+            **{key: {item["_id"]: item["count"] for item in row.get(key, [])} for key in ("categories", "severities", "channels", "departments", "areas")},
+            "offers_sent": await self.db.offers.count_documents({}),
+        }
+
+    async def insert_one(self, collection: str, item: dict, *, session=None) -> dict:
         record = deepcopy(item)
         if self.use_memory:
             self.memory[collection].append(record)
             return record
-        await self.db[collection].insert_one(record)
+        await self.db[collection].insert_one(record, session=session)
         await self.enforce_storage_budget()
         return clean_mongo_doc(record)
 
@@ -331,7 +409,7 @@ class CivicRepository:
             return None
         return clean_mongo_doc(await self.db[collection].find_one({key: value}))
 
-    async def update_one(self, collection: str, key: str, value: str, changes: dict) -> dict | None:
+    async def update_one(self, collection: str, key: str, value: str, changes: dict, *, session=None) -> dict | None:
         changes = deepcopy(changes)
         changes["updated_at"] = now_utc()
         if self.use_memory:
@@ -341,8 +419,8 @@ class CivicRepository:
                     self.memory[collection][index] = item
                     return deepcopy(item)
             return None
-        await self.db[collection].update_one({key: value}, {"$set": changes})
-        return await self.find_one(collection, key, value)
+        await self.db[collection].update_one({key: value}, {"$set": changes}, session=session)
+        return clean_mongo_doc(await self.db[collection].find_one({key: value}, session=session))
 
     async def delete_one(self, collection: str, key: str, value: str) -> bool:
         if self.use_memory:

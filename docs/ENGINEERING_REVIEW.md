@@ -95,9 +95,11 @@ This review is intentionally incremental. It preserves the FastAPI backend, Mong
 - Added consistent public pagination contract.
 - Added valid offer state transitions and one-active-assignment protection.
 
-### Remaining recommendation
+### Implemented in the production refinement
 
-The frontend has been separated into HTML, CSS, and JSX assets, but the Babel/Tailwind-CDN runtime remains the largest maintainability risk. If the project grows beyond the hackathon, introduce a build step incrementally, starting with API/auth and Command Center components. Required tests: component state, auth persistence, filters, and map popup privacy. Regression risk: build/deployment changes and CSS differences.
+- Replaced runtime Babel, React, Tailwind, Lucide, Leaflet, and font CDN loading with a locked Vite build and hashed assets.
+- Extracted API transport, icon registry, and the authority review dialog from the application shell; feature boundaries are now explicit and can be migrated route-by-route without changing API semantics.
+- Added Vitest component/API tests and Playwright desktop/mobile layout coverage.
 
 ## P3 — Performance and scalability
 
@@ -108,12 +110,13 @@ The frontend has been separated into HTML, CSS, and JSX assets, but the Babel/Ta
 - Audit, session, user, idempotency, webhook, and repair-owner indexes.
 - Map list payload no longer includes known private fields.
 
-### Remaining recommendation
+### Implemented in the production refinement
 
-- Replace latitude/longitude pair indexing with a GeoJSON `2dsphere` field and bounding-box endpoint.
-- Use server-side map clustering/aggregation above roughly 10,000 visible records.
-- Move AI/image analysis to a durable job queue only when synchronous latency or traffic justifies it.
-- Replace application-side analytics scans with Mongo aggregation as report volume grows.
+- Added a GeoJSON `2dsphere` index and bounded geospatial queries.
+- Added server-side, zoom-aware map clustering with a 2,000-cluster response ceiling and a graceful client fallback.
+- Wrapped complaint/offer/proof/payment state and audit writes in repository transactions (memory rollback in tests; Mongo sessions in production).
+
+Move AI/image analysis to a durable job queue only when measured traffic or synchronous latency justifies the additional operational system.
 
 Tests: geospatial bounding queries, pagination stability, load tests at 10k/100k synthetic records. Regression risks: coordinate migration and cluster UX changes.
 
@@ -123,12 +126,11 @@ Tests: geospatial bounding queries, pagination stability, load tests at 10k/100k
 
 - Responsive light/dark UI, public map state colors, clear admin filters, youth account persistence, inline auth errors, proof-specific workflow, loading/error feedback.
 
-### Remaining recommendation
+### Implemented in the production refinement
 
-- Show public lifecycle terms from the canonical state machine rather than UI-local labels.
-- Add an accessible map/list toggle and marker clustering.
-- Display accountability methodology alongside department metrics.
-- Add confirmation dialogs only for truly destructive or irreversible administrative decisions.
+- Replaced the browser prompt with an accessible authority review sheet containing editable classification, severity, department, and a required decision note.
+- Added clustered map behavior, two-party resolution language, bounded progress transitions, consistent evidence states, and payment/reference visibility.
+- Preserved the accountability methodology next to operational metrics and reserved confirmation UI for final review/release actions.
 
 ## Operational acceptance criteria
 
