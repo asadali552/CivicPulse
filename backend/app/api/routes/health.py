@@ -27,7 +27,7 @@ async def health_check():
         "ai": "configured" if settings.gemini_api_key else "fallback-pending-key",
         "messaging": "future-module-disabled",
         "storage": "cloudinary-configured" if has_cloudinary else "local-upload-fallback",
-        "service": "CivicPulse AI",
+        "service": "UrbanFix AI",
         "database_storage": storage_usage,
     }
 

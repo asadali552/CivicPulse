@@ -11,7 +11,7 @@ except ImportError:  # Keeps static analysis friendly before dependencies are in
 
 
 class Settings(BaseSettings):
-    app_name: str = "CivicPulse AI"
+    app_name: str = "UrbanFix AI"
     environment: str = "development"
     public_base_url: str = ""
     admin_username: str = "admin"

@@ -53,6 +53,7 @@ async def _release(*, reference: str, amount: int, destination: str | None, meta
             destination=destination,
             transfer_group=reference,
             metadata=metadata,
+            # Preserve the original namespace so rebranding cannot duplicate a prior transfer.
             idempotency_key=f"civicpulse-release-{reference}",
         )
         return PaymentReceipt("stripe", transfer.id, amount)

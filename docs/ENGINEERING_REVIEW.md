@@ -1,4 +1,4 @@
-# CivicPulse AI Engineering Review
+# UrbanFix AI Engineering Review
 
 This review is intentionally incremental. It preserves the FastAPI backend, MongoDB repository, Gemini integration, and existing single-page UI while extracting correctness-critical rules into small services.
 
@@ -42,7 +42,7 @@ This review is intentionally incremental. It preserves the FastAPI backend, Mong
 4. Files: `app/api/routes/whatsapp.py`, `app/core/config.py`.
 5. Implementation: production `/webhook` GET/POST paths; demo path remains isolated for demonstrations.
 6. Tests: signed webhook creates once; replay returns the original tracking ID.
-7. Regression risk: real Meta payload normalization still needs an adapter because the current production contract expects CivicPulse-normalized fields.
+7. Regression risk: real Meta payload normalization still needs an adapter because the current production contract expects UrbanFix-normalized fields.
 
 ## P1 — Core reliability and workflow
 

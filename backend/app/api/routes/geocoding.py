@@ -20,7 +20,7 @@ async def reverse_geocode(
             response = await client.get(
                 "https://nominatim.openstreetmap.org/reverse",
                 params={"lat": latitude, "lon": longitude, "format": "jsonv2", "addressdetails": 1, "zoom": 18, "accept-language": "en"},
-                headers={"User-Agent": "CivicPulseAI/1.0 (civic issue location lookup)"},
+                headers={"User-Agent": "UrbanFixAI/1.0 (civic issue location lookup)"},
             )
             response.raise_for_status()
         result = response.json()

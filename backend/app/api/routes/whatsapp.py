@@ -36,7 +36,7 @@ async def whatsapp_demo_webhook(payload: WhatsAppDemoMessage):
     created = await create_complaint(complaint)
     created = await civic_repo.update_one("complaints", "complaint_id", created["complaint_id"], {"channel": "WhatsApp"})
     return {
-        "message": "WhatsApp report processed through CivicPulse pipeline.",
+        "message": "WhatsApp report processed through UrbanFix pipeline.",
         "tracking_id": created["complaint_id"],
         "complaint": created,
     }

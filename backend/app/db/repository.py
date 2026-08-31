@@ -103,7 +103,7 @@ class CivicRepository:
                     "or enable ALLOW_MEMORY_FALLBACK for local development."
                 ) from exc
             logger.warning(
-                "MongoDB is temporarily unavailable; CivicPulse started in non-persistent local mode: %s",
+                "MongoDB is temporarily unavailable; UrbanFix started in non-persistent local mode: %s",
                 self.connection_error,
             )
 

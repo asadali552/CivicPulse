@@ -1,1 +1,1 @@
-"""CivicPulse AI backend package."""
+"""UrbanFix AI backend package."""

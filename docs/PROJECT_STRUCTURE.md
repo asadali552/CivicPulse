@@ -1,4 +1,4 @@
-# CivicPulse AI Project Structure
+# UrbanFix AI Project Structure
 
 This folder is organized for the hackathon MVP:
 

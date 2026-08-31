@@ -1,4 +1,4 @@
-"""Vercel entry point for the CivicPulse FastAPI application."""
+"""Vercel entry point for the UrbanFix FastAPI application."""
 
 from pathlib import Path
 import sys

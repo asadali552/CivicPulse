@@ -290,7 +290,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
     // --- MAIN APP COMPONENT ---
     export default function App() {
       const [activeTab, setActiveTab] = useState('landing');
-      const [darkMode, setDarkMode] = useState(() => localStorage.getItem('civicpulse-theme') !== 'light');
+      const [darkMode, setDarkMode] = useState(() => localStorage.getItem('urbanfix-theme') !== 'light');
       const [reports, setReports] = useState(INITIAL_REPORTS);
       const [reportsTruncated, setReportsTruncated] = useState(false);
       const [selectedReport, setSelectedReport] = useState(INITIAL_REPORTS[0]);
@@ -360,7 +360,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
 
       useEffect(() => {
         document.documentElement.classList.toggle('dark', darkMode);
-        localStorage.setItem('civicpulse-theme', darkMode ? 'dark' : 'light');
+        localStorage.setItem('urbanfix-theme', darkMode ? 'dark' : 'light');
         document.querySelector('meta[name="theme-color"]')?.setAttribute('content', darkMode ? '#0B0F17' : '#f5f5f7');
       }, [darkMode]);
 
@@ -375,13 +375,13 @@ import ReviewDialog from './components/ReviewDialog.jsx';
         try {
           const user = await api('/auth/me');
           if (requestVersion !== authVersionRef.current) return;
-          window.CIVICPULSE_CSRF = user.csrf_token;
+          window.URBANFIX_CSRF = user.csrf_token;
           setAuthUser(user);
           await refreshData(user);
         } catch (error) {
           if (requestVersion !== authVersionRef.current) return;
           if (error.status === 401) {
-            window.CIVICPULSE_CSRF = '';
+            window.URBANFIX_CSRF = '';
             setAuthUser(null);
             await refreshData(null);
           } else {
@@ -432,7 +432,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
           const path = selectedMode === 'register' ? '/auth/register' : '/auth/login';
           const payload = selectedMode === 'register' ? {name:authForm.name.trim(),email:authForm.email.trim(),password:authForm.password,phone:authForm.phone.trim(),payout_account_id:authForm.payoutAccount.trim()} : {email:authForm.email.trim(),password:authForm.password};
           const user = await api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-          window.CIVICPULSE_CSRF = user.csrf_token; setAuthUser(user); setAuthForm({name:'',email:'',password:'',confirmPassword:'',phone:'',payoutAccount:''});
+          window.URBANFIX_CSRF = user.csrf_token; setAuthUser(user); setAuthForm({name:'',email:'',password:'',confirmPassword:'',phone:'',payoutAccount:''});
           await refreshData(user); showToast(`Welcome, ${user.name}.`);
         } catch (error) { setAuthError(error.message); showToast(error.message); }
         finally { setAuthBusy(false); }
@@ -446,7 +446,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
           const payload = registering ? {name:authForm.name.trim(),email:authForm.email.trim(),password:authForm.password,phone:authForm.phone.trim(),account_type:'contractor',service_area:contractorForm.service_area.trim(),skills:contractorForm.skills.split(',').map(v=>v.trim()).filter(Boolean),payout_account_id:contractorForm.payout_account_id.trim()} : {email:authForm.email.trim(),password:authForm.password};
           const user = await api(registering ? '/auth/register' : '/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
           if (user.role !== 'contractor') throw new Error('Use a registered contractor account.');
-          window.CIVICPULSE_CSRF=user.csrf_token; setAuthUser(user); await refreshData(user); showToast(`Welcome, ${user.name}.`);
+          window.URBANFIX_CSRF=user.csrf_token; setAuthUser(user); await refreshData(user); showToast(`Welcome, ${user.name}.`);
         } catch(error) { setAuthError(error.message); showToast(error.message); }
         finally { setAuthBusy(false); }
       };
@@ -483,7 +483,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
 
       const rateContractor = async (report, score) => {
         const authority = authUser?.role === 'admin';
-        const token = sessionStorage.getItem(`civicpulse-reporter-${report.id}`);
+        const token = sessionStorage.getItem(`urbanfix-reporter-${report.id}`);
         if (!authority && !token) return showToast('Only the original reporter or authority can rate this work.');
         try { const updated=await api(`/complaints/${report.id}/${authority?'authority':'reporter'}-contractor-rating`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score,token})}); setSelectedReport(normalizeReport(updated)); await refreshData(authUser); showToast(`${score}-star rating recorded.`); }
         catch(error) { showToast(error.message); }
@@ -492,7 +492,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
       const logout = async () => {
         authVersionRef.current += 1;
         try { await api('/auth/logout',{method:'POST'}); } catch (_) {}
-        window.CIVICPULSE_CSRF=''; setAuthUser(null); setDashboard(null); setRepairRequests([]); setOperationDetail(null); setActiveTab('landing'); showToast('Logged out securely.');
+        window.URBANFIX_CSRF=''; setAuthUser(null); setDashboard(null); setRepairRequests([]); setOperationDetail(null); setActiveTab('landing'); showToast('Logged out securely.');
       };
 
       const showToast = (msg) => {
@@ -562,7 +562,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
           setTrackingQuery(newReport.id);
           reportSubmissionKeyRef.current = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
           if (created.reporter_verification_token) {
-            sessionStorage.setItem(`civicpulse-reporter-${newReport.id}`, created.reporter_verification_token);
+            sessionStorage.setItem(`urbanfix-reporter-${newReport.id}`, created.reporter_verification_token);
           }
           showToast(`Report ${newReport.id} logged${newReport.needs_review ? ' for human review' : ' and routed successfully'}.`);
           setActiveTab('track');
@@ -776,7 +776,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
         { label: 'Reports visible', val: reports.length.toLocaleString(), trend: apiOnline && !reports.some(report=>report.data_label === 'Demo') ? 'Live public records' : 'Clearly labeled demo records', icon: 'map-pinned' },
         { label: 'Resolved', val: resolvedReports.toLocaleString(), trend: 'Evidence-backed closure', icon: 'badge-check' },
         { label: 'Priority open', val: criticalOpenReports.toLocaleString(), trend: 'High and critical', icon: 'siren' },
-        { label: 'Fully verified', val: verifiedReports.toLocaleString(), trend: 'Three-party approval', icon: 'shield-check' }
+        { label: 'Fully verified', val: verifiedReports.toLocaleString(), trend: 'Two-party approval', icon: 'shield-check' }
       ];
 
       return (
@@ -785,12 +785,10 @@ import ReviewDialog from './components/ReviewDialog.jsx';
           {/* HEADER / NAVIGATION */}
           <header className="sticky top-0 z-50 bg-[#070A11] border-b border-slate-800/80">
             <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-              <button aria-label="CivicPulse home" className="flex shrink-0 items-center gap-2.5 text-left rounded-xl focus:outline-none" onClick={() => setActiveTab('landing')}>
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center">
-                  <Icon name="activity" className="w-5 h-5 text-slate-950 stroke-[2.5]" />
-                </div>
+              <button aria-label="UrbanFix home" className="flex shrink-0 items-center gap-2.5 text-left rounded-xl focus:outline-none" onClick={() => setActiveTab('landing')}>
+                <img src="/assets/urbanfix-logo.svg" width="36" height="36" alt="" className="h-9 w-9 rounded-xl" />
                 <div className="font-extrabold text-lg tracking-tight text-white flex items-center font-sans whitespace-nowrap">
-                    CIVIC<span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-cyan-300">PULSE</span>
+                    <span>URBAN</span><span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-cyan-300">FIX</span>
                 </div>
               </button>
 
@@ -892,7 +890,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
                       </h1>
                       
                       <p className="mt-6 text-base sm:text-lg leading-7 sm:leading-8 text-slate-300 max-w-2xl font-normal">
-                        CivicPulse connects citizen photo evidence and location with AI triage, SLA accountability, verified repair proofs, and transparent public consensus.
+                        UrbanFix connects citizen photo evidence and location with AI triage, SLA accountability, verified repair proofs, and transparent public consensus.
                       </p>
 
                       <div className="mt-8 flex flex-col sm:flex-row gap-3.5">
@@ -1528,7 +1526,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
 
 
                     {/* CONTRACTOR STAR RATING */}
-                    {selectedReport.afterImage && selectedReport.assigned_contractor_id && (authUser?.role === 'admin' || sessionStorage.getItem(`civicpulse-reporter-${selectedReport.id}`)) && (
+                    {selectedReport.afterImage && selectedReport.assigned_contractor_id && (authUser?.role === 'admin' || sessionStorage.getItem(`urbanfix-reporter-${selectedReport.id}`)) && (
                       <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
                           <div className="text-xs font-bold text-white flex items-center gap-1.5">
@@ -2462,7 +2460,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
             <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-center text-xs text-slate-400">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center"><Icon name="activity" className="w-3.5 h-3.5 text-slate-950" /></div>
-                <span className="text-slate-200 font-bold">CivicPulse</span>
+                <span className="text-slate-200 font-bold">UrbanFix</span>
                 <span>· Transparent civic reporting and verification</span>
               </div>
             </div>

@@ -81,7 +81,7 @@ async def store_upload(file: UploadFile | None) -> str | None:
             result = await asyncio.wait_for(asyncio.to_thread(
                 cloudinary.uploader.upload,
                 content,
-                folder="civicpulse/evidence",
+                folder="urbanfix/evidence",
                 resource_type="image",
                 use_filename=False,
                 unique_filename=True,

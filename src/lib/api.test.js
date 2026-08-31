@@ -2,11 +2,11 @@ import { api } from './api.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
-  delete window.CIVICPULSE_CSRF;
+  delete window.URBANFIX_CSRF;
 });
 
 test('adds CSRF protection to mutations', async () => {
-  window.CIVICPULSE_CSRF = 'csrf-token';
+  window.URBANFIX_CSRF = 'csrf-token';
   const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
   await api('/offers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   expect(fetchMock).toHaveBeenCalledWith('/api/offers', expect.objectContaining({

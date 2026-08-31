@@ -20,7 +20,7 @@ UPLOAD_DIR = upload_directory()
 LOCAL_UPLOADS_ENABLED = settings.environment != "production"
 if LOCAL_UPLOADS_ENABLED:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-logger = logging.getLogger("civicpulse.http")
+logger = logging.getLogger("urbanfix.http")
 
 
 @asynccontextmanager
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="CivicPulse AI API",
+    title="UrbanFix AI API",
     description="AI-powered civic governance and decision-support backend.",
     version="0.1.0",
     lifespan=lifespan,

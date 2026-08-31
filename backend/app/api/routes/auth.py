@@ -99,7 +99,7 @@ async def login(payload: LoginCreate, request: Request, response: Response):
     is_admin_name = hmac.compare_digest(email, settings.admin_username.lower())
     is_admin_password = hmac.compare_digest(payload.password, settings.admin_password)
     if is_admin_name and is_admin_password:
-        user = {"user_id": "ADMIN", "name": "CivicPulse Administrator", "email": email, "role": "admin"}
+        user = {"user_id": "ADMIN", "name": "UrbanFix Administrator", "email": email, "role": "admin"}
     else:
         user = await civic_repo.find_one("users", "email", email)
         if not user or not verify_password(payload.password, user["password_salt"], user["password_hash"]):

@@ -1,4 +1,4 @@
-const CACHE = 'civicpulse-v3';
+const CACHE = 'urbanfix-v4';
 const CORE = [
   '/',
   '/assets/js/register-service-worker.js',

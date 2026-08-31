@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: civicpulse-ai
+    name: urbanfix-ai
     runtime: docker
     healthCheckPath: /api/health
     envVars:

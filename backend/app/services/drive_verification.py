@@ -29,7 +29,7 @@ async def verify_public_drive_access(value: str) -> dict:
     url = normalize_drive_url(value)
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
-            response = await client.get(verification_url(url), headers={"User-Agent": "CivicPulse-Link-Verifier/1.0"})
+            response = await client.get(verification_url(url), headers={"User-Agent": "UrbanFix-Link-Verifier/1.0"})
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail="Drive access could not be verified; try again shortly") from exc
     final_host = urlparse(str(response.url)).hostname

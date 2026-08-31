@@ -1,4 +1,4 @@
-# CivicPulse AI
+# UrbanFix AI
 
 AI-powered smart civic governance and decision-support platform for hackathon demo.
 
@@ -94,7 +94,7 @@ ENVIRONMENT=production
 ALLOW_MEMORY_FALLBACK=false
 SEED_DEMO_DATA=false
 MONGO_URI=<MongoDB Atlas connection string>
-MONGO_DB_NAME=civicpulse
+MONGO_DB_NAME=<existing MongoDB database name>
 ADMIN_USERNAME=<secure administrator name>
 ADMIN_PASSWORD=<at least 12 characters>
 REPORTER_TOKEN_SECRET=<random value with at least 32 characters>
@@ -108,7 +108,7 @@ PAYMENT_PROVIDER=stripe
 STRIPE_SECRET_KEY=<Stripe secret key>
 ```
 
-After deploying, set `PUBLIC_BASE_URL` to the production URL, such as `https://civicpulse.example.com`, and redeploy. The frontend uses same-origin `/api`, so a separate API URL or CORS configuration is not required.
+After deploying, set `PUBLIC_BASE_URL` to the production URL, such as `https://urbanfix.example.com`, and redeploy. The frontend uses same-origin `/api`, so a separate API URL or CORS configuration is not required.
 
 Production uploads are Cloudinary-only because Vercel Functions do not provide persistent local storage. The application refuses unsafe production settings during startup instead of silently losing data.
 
@@ -124,7 +124,7 @@ The repository also retains `Dockerfile` and `render.yaml` for container-based d
 
 ## Production guarantees and boundaries
 
-- Contractor proof requires both an image and a Google Drive/Docs report. CivicPulse performs a server-side anonymous access check and records the result before accepting proof. Google can still change sharing permissions later; production monitoring can periodically re-check unresolved evidence.
+- Contractor proof requires both an image and a Google Drive/Docs report. UrbanFix performs a server-side anonymous access check and records the result before accepting proof. Google can still change sharing permissions later; production monitoring can periodically re-check unresolved evidence.
 - Stripe Connect transfers use one idempotency key per work order, so a retry cannot intentionally release the same payment twice. Recipients need a stored Connect account ID.
 - Complaint, assignment, proof, decision, and audit writes use repository transactions. MongoDB production must run on Atlas or another replica set that supports transactions.
 - Map clients request server-side bounding-box clusters rather than loading the entire complaint collection.

@@ -9,7 +9,7 @@ from fastapi import Depends, HTTPException, Request, status
 
 from app.db.repository import civic_repo, now_utc, public_id
 
-SESSION_COOKIE = "civicpulse_session"
+SESSION_COOKIE = "urbanfix_session"
 SESSION_DAYS = 7
 
 
@@ -63,7 +63,7 @@ async def optional_user(request: Request) -> dict | None:
         await civic_repo.delete_one("sessions", "token_hash", token_hash(token))
         return None
     if session["role"] == "admin":
-        user = {"user_id": "ADMIN", "name": "CivicPulse Administrator", "email": "admin", "role": "admin"}
+        user = {"user_id": "ADMIN", "name": "UrbanFix Administrator", "email": "admin", "role": "admin"}
     else:
         user = await civic_repo.find_one("users", "user_id", session["user_id"])
     if not user:

@@ -1,4 +1,4 @@
-export const API_BASE = window.CIVICPULSE_API_BASE || '/api';
+export const API_BASE = window.URBANFIX_API_BASE || '/api';
 
 export async function api(path, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
@@ -7,8 +7,8 @@ export async function api(path, options = {}) {
     ...options,
     headers: {
       ...(options.headers || {}),
-      ...(!['GET', 'HEAD', 'OPTIONS'].includes(method) && window.CIVICPULSE_CSRF
-        ? { 'X-CSRF-Token': window.CIVICPULSE_CSRF }
+      ...(!['GET', 'HEAD', 'OPTIONS'].includes(method) && window.URBANFIX_CSRF
+        ? { 'X-CSRF-Token': window.URBANFIX_CSRF }
         : {}),
     },
   });

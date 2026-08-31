@@ -2,7 +2,7 @@
 
 ## 90-Second Story
 
-CivicPulse AI turns citizen reports into prioritized, trackable municipal action.
+UrbanFix AI turns citizen reports into prioritized, trackable municipal action.
 
 1. Open the citizen portal.
 2. Upload or select a civic issue image.
@@ -23,4 +23,4 @@ CivicPulse AI turns citizen reports into prioritized, trackable municipal action
 
 ## Strong One-Liner
 
-CivicPulse AI turns a citizen's photo and location into prioritized, trackable government action.
+UrbanFix AI turns a citizen's photo and location into prioritized, trackable government action.
