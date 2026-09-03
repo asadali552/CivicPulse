@@ -266,7 +266,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
             </>
           )}
           {demoCredentials && (
-            <button type="button" onClick={() => setForm({...form, email:'admin', password:'admin'})} className="w-full rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-left text-xs text-amber-200 hover:bg-amber-400/15 transition-colors">
+            <button type="button" onClick={() => setForm({...form, email:'admin', password:'admin'})} className="w-full rounded-xl border border-sky-500/30 bg-sky-500/10 p-3 text-left text-xs text-sky-300 hover:bg-sky-500/20 transition-colors">
               <span className="block font-bold">Judge demo access</span>
               <span className="font-mono">Username: admin · Password: admin</span>
             </button>
