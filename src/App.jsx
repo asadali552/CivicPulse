@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { api } from './lib/api.js';
 import Icon from './components/Icon.jsx';
 import ReviewDialog from './components/ReviewDialog.jsx';
@@ -2472,6 +2473,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
               </div>
             </div>
           </footer>
+          <Analytics />
           <ReviewDialog report={reviewReport} busy={reviewBusy} onClose={() => !reviewBusy && setReviewReport(null)} onConfirm={confirmHumanReview} />
         </div>
       );
