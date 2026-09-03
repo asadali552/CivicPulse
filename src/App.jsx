@@ -236,7 +236,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
       }
     ];
 
-    function AuthCard({ title, subtitle, mode, setMode, form, setForm, submit, busy, error, allowRegister = true }) {
+    function AuthCard({ title, subtitle, mode, setMode, form, setForm, submit, busy, error, allowRegister = true, demoCredentials = false }) {
       const [showPassword, setShowPassword] = useState(false);
       const registering = allowRegister && mode === 'register';
       const emailValid = !allowRegister || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim());
@@ -264,6 +264,12 @@ import ReviewDialog from './components/ReviewDialog.jsx';
               <input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="Phone number (optional)" autoComplete="tel" className="w-full glass-input rounded-xl p-3 text-sm focus:outline-none"/>
               <input value={form.payoutAccount || ''} onChange={e=>setForm({...form,payoutAccount:e.target.value})} placeholder="Stripe Connect account for payments (acct_…)" className="w-full glass-input rounded-xl p-3 text-sm focus:outline-none"/>
             </>
+          )}
+          {demoCredentials && (
+            <button type="button" onClick={() => setForm({...form, email:'admin', password:'admin'})} className="w-full rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-left text-xs text-amber-200 hover:bg-amber-400/15 transition-colors">
+              <span className="block font-bold">Judge demo access</span>
+              <span className="font-mono">Username: admin · Password: admin</span>
+            </button>
           )}
           <input type={allowRegister?'email':'text'} value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder={allowRegister ? 'Email address' : 'Admin username'} autoComplete="username" className="w-full glass-input rounded-xl p-3 text-sm focus:outline-none"/>
           <div className="relative">
@@ -2012,6 +2018,7 @@ import ReviewDialog from './components/ReviewDialog.jsx';
                     busy={authBusy}
                     error={authError}
                     allowRegister={false}
+                    demoCredentials
                   />
                   {authUser && (
                     <button onClick={logout} className="block mx-auto text-xs text-slate-400 hover:text-white underline">

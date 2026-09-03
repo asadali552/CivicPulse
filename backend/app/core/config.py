@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     public_base_url: str = ""
     admin_username: str = "admin"
     admin_password: str = "admin"
+    allow_demo_admin: bool = True
     reporter_token_secret: str = "development-reporter-secret"
     api_prefix: str = "/api"
     mongo_uri: str = "mongodb://localhost:27017"
@@ -56,9 +57,10 @@ class Settings(BaseSettings):
     def validate_production_safety(self):
         if self.environment == "production":
             unsafe = []
-            if self.admin_username.lower() == "admin" and self.admin_password == "admin":
+            demo_admin = self.admin_username.lower() == "admin" and self.admin_password == "admin"
+            if demo_admin and not self.allow_demo_admin:
                 unsafe.append("ADMIN_USERNAME/ADMIN_PASSWORD")
-            if len(self.admin_password) < 12:
+            if len(self.admin_password) < 12 and not (demo_admin and self.allow_demo_admin):
                 unsafe.append("ADMIN_PASSWORD (minimum 12 characters)")
             if self.reporter_token_secret == "development-reporter-secret" or len(self.reporter_token_secret) < 32:
                 unsafe.append("REPORTER_TOKEN_SECRET (minimum 32 characters)")

@@ -7,4 +7,9 @@ test('homepage has no horizontal overflow and exposes community navigation', asy
   expect(overflow).toBe(false);
   const label = page.viewportSize().width < 640 ? 'Community' : 'Community Tasks';
   await expect(page.getByText(label, { exact: true }).filter({ visible: true })).toBeVisible();
+
+  await page.getByRole('button', { name: /Authority Portal|Admin/ }).click();
+  await page.getByRole('button', { name: /Judge demo access/ }).click();
+  await expect(page.getByPlaceholder('Admin username')).toHaveValue('admin');
+  await expect(page.getByPlaceholder('Password')).toHaveValue('admin');
 });

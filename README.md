@@ -1,130 +1,147 @@
 # UrbanFix AI
 
-AI-powered smart civic governance and decision-support platform for hackathon demo.
+![UrbanFix AI — report city problems and track verified repairs](public/assets/urbanfix-social.png)
 
-## MVP Demo Flow
+**Turn a citizen's photo and location into prioritized, trackable civic action.**
 
-1. Citizen reports a civic problem from the portal; after civic screening, GPS can be confirmed from photo EXIF, live device location, a map pin, or a manual address.
-2. Backend stores the complaint and runs AI analysis.
-3. AI returns category, severity, department, confidence, and summary.
-4. Priority engine calculates a transparent score.
-5. Authority dashboard shows map markers, queue, analytics, and governance insight.
-6. Admin can send a controlled small repair offer to verified local contractors.
-7. Citizen tracks progress using a public complaint ID.
-8. A registered community account can propose explicitly eligible low-risk micro-maintenance; the proposal remains linked to that account across logout/login.
-9. Admin reserves a budget, the worker submits completion evidence, and authority approval releases payment through the configured provider.
+UrbanFix AI is an evidence-backed civic reporting and decision-support platform. Citizens report problems, AI structures the evidence, a transparent rules engine prioritizes work, and authorities coordinate verified contractors or eligible community micro-maintenance through completion.
 
-The community workflow is restricted to explicitly recognized, low-risk cleanup and beautification tasks. Local development uses an explicitly labelled demo payment adapter; production refuses to start unless Stripe is configured.
+> Hackathon submission status: functional full-stack MVP with automated frontend, backend, and responsive browser tests.
 
-## Accountability and Safety
+## Why it stands out
 
-- Every citizen report remains a distinct source record and can link to a shared incident cluster.
-- Reporters who provide private contact details receive a time-limited verification token; administrators cannot impersonate reporter approval.
-- Public accountability receipts expose AI recommendations, priority methodology, SLA state, evidence hashes, approvals, and a tamper-evident audit chain without exposing reporter identity.
-- Permitted photo GPS fields are extracted temporarily and used only after citizen confirmation; uploads are then decoded, pixel-limited, orientation-normalized, metadata-stripped, and safely re-encoded.
-- A signed, image-bound preview token reuses the initial AI result during submission, avoiding a second Gemini call unless the evidence or description changes.
-- Public text is screened for common phone, email, and national-identifier patterns; public coordinates are reduced in precision.
-- Production startup rejects default administrator credentials, weak reporter-token secrets, and memory fallback.
+- **Action, not just reporting:** complaints move through assignment, proof, approval, and closure.
+- **Explainable prioritization:** AI recommends a classification; deterministic scoring controls priority.
+- **Public accountability:** receipts expose SLA state, evidence hashes, approvals, and a tamper-evident audit chain without revealing reporter identity.
+- **Resilient demo:** seeded in-memory data keeps local demos working when MongoDB or external AI is unavailable.
+- **Safety by design:** metadata stripping, PII screening, role-based access, CSRF protection, upload validation, and production configuration checks are built in.
 
-## Current State
+## Demo flow
 
-- The React UI is compiled by Vite and served by FastAPI at `/`; it has no runtime Babel, Tailwind, icon, map, or font CDN dependency.
-- `backend/` contains a FastAPI API with MongoDB-ready repository and in-memory fallback.
-- Contractor matching, guarded offer state transitions, public Drive proof verification, authority review, provider-backed payment release, clustered maps, and tracking APIs are implemented.
-- Public problems remain visible on the civic map, while community proposals, contact details, and funding actions are private to the owner and administrator.
-- Authentication uses HttpOnly sessions, CSRF tokens, salted PBKDF2 password hashes, login throttling, and role-based API authorization.
+1. A citizen uploads a photo and confirms its location from EXIF, device GPS, a map pin, or an address.
+2. AI recommends category, severity, department, confidence, and a short summary.
+3. The priority engine calculates a transparent score and places the issue on the authority dashboard.
+4. An administrator assigns an eligible contractor or reviews a low-risk community proposal.
+5. The worker submits evidence; authority approval releases payment through the configured provider.
+6. The citizen follows progress using the public complaint ID and accountability receipt.
 
-## Backend Setup
+For a presentation-ready walkthrough, use [the 90-second demo script](docs/DEMO_SCRIPT.md).
 
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload --port 8000
+## Architecture
+
+```text
+React + Vite client
+        │ same-origin /api
+        ▼
+FastAPI application ── Gemini analysis
+        │              Cloudinary evidence
+        │              Stripe payments
+        ▼
+MongoDB repository (seeded memory fallback in development)
 ```
 
-The development administrator is `admin` / `admin`. Set strong `ADMIN_USERNAME` and `ADMIN_PASSWORD` values in `.env` before any public deployment.
+The backend keeps AI recommendations separate from deterministic workflow and priority decisions. See the [API contract](docs/API_CONTRACT.md), [project structure](docs/PROJECT_STRUCTURE.md), and [engineering review](docs/ENGINEERING_REVIEW.md) for implementation detail.
 
-Health check:
+## Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 19, Vite, Tailwind CSS, Leaflet |
+| API | FastAPI, Pydantic |
+| Data | MongoDB via Motor; in-memory demo fallback |
+| Integrations | Gemini, Cloudinary, Stripe |
+| Quality | Vitest, Testing Library, Pytest, Playwright |
+| Deployment | Vercel, Docker, Render |
+
+## Run locally
+
+Prerequisites: Node.js 22+, Python 3.12+, and optionally MongoDB.
 
 ```bash
-curl http://localhost:8000/api/health
+git clone https://github.com/asadali552/CivicPulse.git
+cd CivicPulse
+npm ci
+
+python3 -m venv backend/.venv
+backend/.venv/bin/pip install -r backend/requirements.txt
+cp backend/.env.example backend/.env
+
+npm run build
+./scripts/run_backend.sh
 ```
 
-The backend uses MongoDB if `MONGO_URI` works. If MongoDB is unavailable, it automatically falls back to seeded in-memory demo data so the demo can still run.
+Open <http://127.0.0.1:8000>. API documentation is at <http://127.0.0.1:8000/docs> and the health endpoint at <http://127.0.0.1:8000/api/health>.
 
-For local development, `ALLOW_MEMORY_FALLBACK=true` prevents a temporary Atlas or DNS outage from stopping the server. Data created in fallback mode is not persistent. Production keeps fallback disabled and should configure the deployment IP in MongoDB Atlas Network Access.
+The temporary judge administrator is `admin` / `admin`, also shown in the authority portal. After judging, set `ALLOW_DEMO_ADMIN=false` and replace both credentials. MongoDB is optional locally because `ALLOW_MEMORY_FALLBACK=true` enables seeded, non-persistent demo data.
 
-## Frontend development
+For frontend hot reload, run `npm run dev` in a second terminal. Vite proxies `/api` and `/uploads` to FastAPI on port 8000.
 
-Install and compile the frontend:
+## Configuration
 
-```bash
-npm install
-npm run dev
-```
+Copy [`backend/.env.example`](backend/.env.example) to `backend/.env`. The template is safe to commit and contains no credentials.
 
-Vite proxies `/api` and `/uploads` to FastAPI on port 8000. For the production-shaped local application, run `npm run build` and then `./scripts/run_backend.sh`; FastAPI serves the generated `dist/` bundle.
+- `GEMINI_API_KEY` enables live AI analysis; the demo remains usable without it.
+- `MONGO_URI` enables persistent storage.
+- `CLOUDINARY_*` configures production evidence storage.
+- `PAYMENT_PROVIDER=stripe` and `STRIPE_SECRET_KEY` enable production payment release.
 
-## Tests
+Never commit `.env`; it is ignored by Git. `ALLOW_DEMO_ADMIN=true` temporarily permits the published judge login; disable it and rotate the credentials immediately after judging.
+
+## Quality checks
 
 ```bash
 npm test
-npm run test:e2e
-backend/.venv/bin/pytest -q backend/tests
 npm run build
+backend/.venv/bin/pytest -q backend/tests
+npx playwright install chromium   # first run only
+npm run test:e2e
 ```
 
-The Playwright suite checks both desktop and 390px mobile layouts. Run `npx playwright install chromium` once on a new machine.
+GitHub Actions runs the same frontend build, unit tests, backend tests, and responsive Playwright checks for every push and pull request.
 
-## Deploy
+## Deployment
 
-### Vercel (frontend and backend together)
+### Vercel
 
-Import the repository into Vercel with the repository root as the project root. Do not select `backend/` as the Root Directory. Vercel uses the root `index.py` entry point, serves the frontend at `/`, and serves FastAPI at `/api` on the same domain.
+Import the repository with its root as the project root. Vercel uses `index.py` for FastAPI and serves the compiled client and `/api` from the same domain.
 
-Vercel runs the Vite build and serves hashed assets from `dist/build`. Complaint and repair evidence is uploaded to Cloudinary in production; files under local `data/uploads/` are intentionally ignored and are not deployed.
-
-Add these Production environment variables in **Project Settings → Environment Variables**:
+Set at least these production variables:
 
 ```text
 ENVIRONMENT=production
 ALLOW_MEMORY_FALLBACK=false
 SEED_DEMO_DATA=false
 MONGO_URI=<MongoDB Atlas connection string>
-MONGO_DB_NAME=<existing MongoDB database name>
+MONGO_DB_NAME=<database name>
 ADMIN_USERNAME=<secure administrator name>
 ADMIN_PASSWORD=<at least 12 characters>
-REPORTER_TOKEN_SECRET=<random value with at least 32 characters>
-CLOUDINARY_CLOUD_NAME=<Cloudinary cloud name>
-CLOUDINARY_API_KEY=<Cloudinary API key>
-CLOUDINARY_API_SECRET=<Cloudinary API secret>
-MAX_UPLOAD_MB=4
-GEMINI_API_KEY=<optional Gemini API key>
-GEMINI_MODEL=gemini-3.5-flash-lite
+ALLOW_DEMO_ADMIN=false
+REPORTER_TOKEN_SECRET=<random value of at least 32 characters>
+CLOUDINARY_URL=<Cloudinary connection URL>
 PAYMENT_PROVIDER=stripe
 STRIPE_SECRET_KEY=<Stripe secret key>
+PUBLIC_BASE_URL=<deployed HTTPS URL>
+GEMINI_API_KEY=<optional Gemini API key>
 ```
 
-After deploying, set `PUBLIC_BASE_URL` to the production URL, such as `https://urbanfix.example.com`, and redeploy. The frontend uses same-origin `/api`, so a separate API URL or CORS configuration is not required.
+Use either `CLOUDINARY_URL` or the three separate `CLOUDINARY_*` values. Production refuses unsafe configuration instead of silently falling back to non-persistent storage.
 
-Production uploads are Cloudinary-only because Vercel Functions do not provide persistent local storage. The application refuses unsafe production settings during startup instead of silently losing data.
+The included `Dockerfile` and `render.yaml` support a single-service Render deployment. More detail is in [deployment notes](deploy/DEPLOYMENT_NOTES.md).
 
-Cloudinary's combined `CLOUDINARY_URL=cloudinary://...` environment variable can be used instead of the three separate `CLOUDINARY_*` credential variables. Never configure both forms with different accounts.
+## Security and project boundaries
 
-Verify the deployment:
+- Reporter contact details are protected by time-limited verification tokens.
+- Uploaded images are decoded, pixel-limited, orientation-normalized, metadata-stripped, and re-encoded.
+- Public text is screened for common phone, email, and national-identifier patterns; public coordinates use reduced precision.
+- Community work is limited to explicitly eligible, low-risk cleanup and beautification tasks.
+- Stripe transfers use one idempotency key per work order, and MongoDB production workflows require transaction support.
 
-```bash
-curl https://your-domain.vercel.app/api/health
-```
+Please report vulnerabilities privately as described in [SECURITY.md](SECURITY.md). Contributions are welcome through [CONTRIBUTING.md](CONTRIBUTING.md).
 
-The repository also retains `Dockerfile` and `render.yaml` for container-based deployment on Render.
+## Team
 
-## Production guarantees and boundaries
+UrbanFix AI is a hackathon project maintained by [@asadali552](https://github.com/asadali552). Contributions and feedback are welcome.
 
-- Contractor proof requires both an image and a Google Drive/Docs report. UrbanFix performs a server-side anonymous access check and records the result before accepting proof. Google can still change sharing permissions later; production monitoring can periodically re-check unresolved evidence.
-- Stripe Connect transfers use one idempotency key per work order, so a retry cannot intentionally release the same payment twice. Recipients need a stored Connect account ID.
-- Complaint, assignment, proof, decision, and audit writes use repository transactions. MongoDB production must run on Atlas or another replica set that supports transactions.
-- Map clients request server-side bounding-box clusters rather than loading the entire complaint collection.
+## License
+
+Released under the [MIT License](LICENSE).

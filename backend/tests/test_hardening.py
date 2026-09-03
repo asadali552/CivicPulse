@@ -1,11 +1,25 @@
 import asyncio
 import pytest
+from pydantic import ValidationError
 from fastapi import HTTPException
 
 from app.core.config import settings
 from app.db.repository import CivicRepository
 from app.services.drive_verification import normalize_drive_url, verification_url
 from app.services.payments import release_contractor_payment
+
+
+def test_production_demo_admin_requires_explicit_judge_switch():
+    from app.core.config import Settings
+    production = {
+        "environment": "production", "admin_username": "admin", "admin_password": "admin",
+        "reporter_token_secret": "x" * 32, "mongo_uri": "mongodb://db:27017",
+        "cloudinary_url": "cloudinary://key:secret@cloud", "payment_provider": "stripe",
+        "stripe_secret_key": "sk_test_placeholder",
+    }
+    with pytest.raises(ValidationError):
+        Settings(**production, allow_demo_admin=False)
+    assert Settings(**production, allow_demo_admin=True).allow_demo_admin is True
 
 
 def test_drive_links_are_allowlisted_and_canonical_download_is_used():

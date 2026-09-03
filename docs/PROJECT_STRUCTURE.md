@@ -2,9 +2,9 @@
 
 This folder is organized for the hackathon MVP:
 
-- `index.html` - frontend document structure and external dependencies.
-- `public/assets/css/` - application styles.
-- `public/assets/js/` - React application code, Tailwind configuration, and service-worker registration.
+- `index.html` - frontend entry document and social/SEO metadata.
+- `src/` - React application, components, API client, styles, and unit tests.
+- `public/assets/js/` - service-worker registration.
 - `public/assets/` - CDN-served images, icons, manifest, and service worker.
 - `backend/` - FastAPI backend.
 - `backend/app/api/routes/` - complaint, dashboard, tracking, contractor, and offer routes.
@@ -23,4 +23,4 @@ This folder is organized for the hackathon MVP:
 - `scripts/` - setup, seed, and helper scripts.
 - `deploy/` - deployment notes and environment examples.
 
-The frontend remains build-free for the hackathon demo. FastAPI serves `index.html`; Vercel serves `public/assets/` through its CDN, while FastAPI mounts the same directory for local development.
+Vite compiles the React frontend into `dist/`. FastAPI serves that production bundle and the same-origin API; Vite provides hot reload and proxies API calls during frontend development.
